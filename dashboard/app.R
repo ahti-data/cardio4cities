@@ -13,10 +13,8 @@ source("utils/chart_downloads.R")
 source("utils/dictionary.R")
 source("utils/dictionary_admin.R")
 source("utils/tab_theme.R")
-source("utils/auth.R")
 
 library(shiny)
-library(shinymanager)
 library(dplyr)
 library(ggplot2)
 
@@ -42,7 +40,6 @@ EXAMPLE_SERIES_COL <- "product"
 EXAMPLE_VALUE_COL <- "revenue"
 
 ui <- fluidPage(
-  if (is_auth_enabled()) auth_ui_head(),
   tc_tab_color_theme(ahti_branding),
   titlePanel("Dashboard template"),
   tabsetPanel(
@@ -100,12 +97,6 @@ ui <- fluidPage(
 )
 
 server <- function(input, output, session) {
-  if (is_auth_enabled()) {
-    auth <- setup_dashboard_auth(session)
-  } else {
-    show_app_without_auth(session)
-  }
-
   # Placeholder wiring for load_project_data() (a no-op stub above) -- a real
   # dashboard replaces both with its actual data loading and drops the
   # invisible(data) return at the bottom of this function once that data is
@@ -209,8 +200,4 @@ server <- function(input, output, session) {
   invisible(data)
 }
 
-if (is_auth_enabled()) {
-  shinyApp(secure_app(ui, enable_admin = TRUE), server)
-} else {
-  shinyApp(ui = ui, server = server)
-}
+shinyApp(ui = ui, server = server)
