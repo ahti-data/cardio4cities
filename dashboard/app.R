@@ -82,6 +82,19 @@ ui <- fluidPage(
       "Dictionary",
       br(),
       dictionary_admin_ui("dictionary")
+    ),
+    tabPanel(
+      "Sample Trends",
+      fluidRow(
+        column(
+          width = 12,
+          h3("Revenue Trends Over Time"),
+          p("This sample page demonstrates a trend visualization across quarters."),
+          plotOutput("trends_chart"),
+          br(),
+          chart_data_downloads_ui("trends_downloads", chart_type = "line_chart")
+        )
+      )
     )
   )
 )
@@ -135,6 +148,27 @@ server <- function(input, output, session) {
       theme_minimal()
   })
 
+  output$trends_chart <- renderPlot({
+    plot_data_pretty() %>%
+      ggplot(aes(
+        x = .data[[EXAMPLE_CATEGORY_COL]],
+        y = .data[[EXAMPLE_VALUE_COL]],
+        color = .data[[EXAMPLE_SERIES_COL]],
+        group = .data[[EXAMPLE_SERIES_COL]]
+      )) +
+      geom_line(size = 1) +
+      geom_point(size = 3) +
+      scale_color_manual(values = ahti_branding$scale_discrete) +
+      labs(
+        title = "Revenue Trends Over Time",
+        x = "Quarter",
+        y = "Revenue",
+        color = "Product"
+      ) +
+      theme_minimal() +
+      theme(legend.position = "bottom")
+  })
+
   chart_data_downloads_server(
     id = "example_downloads",
     data = plot_data,
@@ -150,6 +184,19 @@ server <- function(input, output, session) {
     # dashboard points these at its actual source workbook/sheet (see
     # tc_format_source_mtime() and CLAUDE.md's source_output/source_sheet
     # convention); omit both for a chart with no external source file.
+    source_output = basename(EXAMPLE_DATA_FILE),
+    source_mtime = tc_format_source_mtime(EXAMPLE_DATA_FILE)
+  )
+
+  chart_data_downloads_server(
+    id = "trends_downloads",
+    data = plot_data,
+    chart_type = "line_chart",
+    category_col = EXAMPLE_CATEGORY_COL,
+    series_col = EXAMPLE_SERIES_COL,
+    value_col = EXAMPLE_VALUE_COL,
+    filename_prefix = "revenue_trends",
+    agg_fun = NULL,
     source_output = basename(EXAMPLE_DATA_FILE),
     source_mtime = tc_format_source_mtime(EXAMPLE_DATA_FILE)
   )
