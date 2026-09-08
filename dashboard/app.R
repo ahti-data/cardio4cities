@@ -999,21 +999,28 @@ server <- function(input, output, session) {
     gebied_map_plot() + labs(title = gebied_title())
   })
 
-  # Reset the color-scale bounds to the current selection's own data range
-  # whenever the indicator/metric/niveau changes -- so switching charts
-  # doesn't leave a stale, mismatched min/max behind. Left alone (not
-  # re-triggered) by a plain jaar/gebieden change, so a manually-typed
-  # override survives those.
-  observeEvent(list(input$gebied_indicator, input$gebied_metric, input$gebied_niveau), {
-    shiny::req(input$gebied_metric)
-    df <- gebied_available_data()
-    shiny::req(nrow(df) > 0)
-    waarde <- c4c_apply_metric(df, input$gebied_metric, full_df = OUTCOMES_DATA, breakdown_id = input$gebied_niveau)$waarde
-    waarde <- waarde[is.finite(waarde)]
-    shiny::req(length(waarde) > 0)
-    updateNumericInput(session, "gebied_kleur_min", value = floor(min(waarde)))
-    updateNumericInput(session, "gebied_kleur_max", value = ceiling(max(waarde)))
-  }, ignoreInit = FALSE)
+  # Reset the color-scale bounds to the currently selected data's own min/max
+  # whenever indicator/metric/niveau/jaar/gebieden changes -- i.e. the fields
+  # always default to the exact selection shown on screen (gebied_selected_data(),
+  # the same reactive the map itself is built from). A manually-typed override
+  # is only kept until the next such change, since there is no way to tell "the
+  # user typed this on purpose" apart from "this is last selection's stale
+  # default" once the underlying selection itself changes.
+  observeEvent(
+    list(
+      input$gebied_indicator, input$gebied_metric, input$gebied_niveau,
+      input$gebied_jaar, input$gebied_gebieden
+    ),
+    {
+      df <- gebied_selected_data()
+      shiny::req(nrow(df) > 0)
+      waarde <- df$waarde[is.finite(df$waarde)]
+      shiny::req(length(waarde) > 0)
+      updateNumericInput(session, "gebied_kleur_min", value = floor(min(waarde)))
+      updateNumericInput(session, "gebied_kleur_max", value = ceiling(max(waarde)))
+    },
+    ignoreInit = FALSE
+  )
 
   # Hover tooltip (both niveaus, but the only way to see an area's name on
   # the map itself for wijk, which has no permanent labels): a plain
