@@ -80,6 +80,19 @@ C4C_ZORGPAD_EVENT_NAMES <- c(
   "heeft_eerste_event_geen_medicatie"
 )
 
+#' All 4 outcomes behind the "Zorgpad" tab's full event x medication
+#' cross-tab: every Amsterdammer that year, split by whether they had a
+#' first major CVD event *and* whether they had already used risk-factor
+#' medication beforehand -- see [C4C_ZORGPAD_EVENT_NAMES] (the "event"
+#' half) and `code/04_make_incidence_outcomes.R`'s "4 outcome groups"
+#' section.
+C4C_ZORGPAD_ALL_NAMES <- c(
+  "heeft_eerste_event_geen_medicatie",
+  "heeft_eerste_event_met_medicatie",
+  "heeft_geen_eerste_event_geen_medicatie",
+  "heeft_geen_eerste_event_met_medicatie"
+)
+
 #' Demographic and geographic breakdowns available in the dashboard (matches
 #' the `breakdown` column of `data/cardio4cities_outcomes.csv`, itself one
 #' sheet name from the pipeline's `code/06_make_desritpives.R` export). Raw

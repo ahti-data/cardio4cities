@@ -117,14 +117,41 @@ c4c_outcome_choices <- function(meta = C4C_OUTCOME_META, groups = C4C_OUTCOME_GR
 
 #' Metric choices available for an outcome's kind, as a named vector for
 #' `shiny::selectInput(choices = ...)`. The first entry is the sensible
-#' default.
+#' default. When `name` is given and is incidence-eligible (see
+#' [c4c_is_incidence_eligible()]), an extra `"incidence"` choice is appended.
 #' @param kind `"binary"` or `"continuous"` (see [c4c_outcome_kind()]).
-c4c_available_metrics <- function(kind) {
-  if (identical(kind, "continuous")) {
+#' @param name Optional raw outcome column name.
+c4c_available_metrics <- function(kind, name = NULL) {
+  base <- if (identical(kind, "continuous")) {
     c("Aantal per 1.000 inwoners" = "rate_per_1000", "Totaal aantal (opnames)" = "absolute")
   } else {
     c("Aandeel van de bevolking (%)" = "percentage", "Aantal personen" = "absolute")
   }
+  if (!is.null(name) && c4c_is_incidence_eligible(name)) {
+    base <- c(base, "Incidentie: aandeel van de risicogroep (%)" = "incidence")
+  }
+  base
+}
+
+#' The `"heeft_geen_eerdere_..."` outcome name that gives an "eerste_jaar"
+#' incidence outcome's at-risk denominator, e.g.
+#' `"heeft_eerste_jaar_hi_event"` -> `"heeft_geen_eerdere_hi_event"`. `NA`
+#' when `name` isn't an `"heeft_eerste_jaar_..."` outcome, or has no
+#' matching denominator in `meta` (e.g. the "Zorgpad" cross-tab outcomes,
+#' which aren't simple yes/no conditions with their own "not yet" state).
+#' @param name Raw outcome column name (may be a vector).
+#' @param meta Outcome metadata table (see [C4C_OUTCOME_META]).
+c4c_incidence_denominator_name <- function(name, meta = C4C_OUTCOME_META) {
+  denom <- sub("^heeft_eerste_jaar_", "heeft_geen_eerdere_", name)
+  ifelse(grepl("^heeft_eerste_jaar_", name) & denom %in% names(meta), denom, NA_character_)
+}
+
+#' Whether an outcome has a valid incidence denominator -- see
+#' [c4c_incidence_denominator_name()].
+#' @param name Raw outcome column name.
+#' @param meta Outcome metadata table (see [C4C_OUTCOME_META]).
+c4c_is_incidence_eligible <- function(name, meta = C4C_OUTCOME_META) {
+  !is.na(c4c_incidence_denominator_name(name, meta))
 }
 
 #' Which `type` value (see `c4c_filter_outcome()`'s `outcome_type`) an
@@ -141,12 +168,14 @@ c4c_outcome_type <- function(kind) {
 }
 
 #' Axis/title fragment for one metric.
-#' @param metric One of `"percentage"`, `"rate_per_1000"`, `"absolute"`.
+#' @param metric One of `"percentage"`, `"rate_per_1000"`, `"absolute"`,
+#'   `"incidence"`.
 c4c_metric_axis_label <- function(metric) {
   switch(metric,
     percentage = "% van de bevolking",
     rate_per_1000 = "per 1.000 inwoners",
     absolute = "Aantal",
+    incidence = "% van de risicogroep",
     metric
   )
 }
@@ -182,6 +211,56 @@ c4c_add_metric <- function(df, metric) {
     metric == "absolute" ~ as.numeric(.data$value),
     TRUE ~ NA_real_
   ))
+}
+
+#' Add a `waarde` column holding the incidence % = numerator / at-risk
+#' population * 100, where the at-risk population is the matching
+#' `"heeft_geen_eerdere_..."` outcome's own person-count for the same
+#' year/breakdown/`groep` -- see [c4c_incidence_denominator_name()]. Unlike
+#' [c4c_add_metric()]'s `"percentage"` (which divides by the whole
+#' population, `n_totaal`), this divides by the smaller population that had
+#' not yet had the event/started the medication, i.e. genuinely at risk of
+#' a first occurrence that year.
+#' @param df A single-outcome slice from [c4c_filter_outcome()] (one `name`,
+#'   `type` `"n_totaal_gebruikers"`).
+#' @param full_df The full result of [c4c_load_outcomes()], to look up the
+#'   denominator outcome's rows.
+#' @param breakdown_id The breakdown `df` was filtered to (e.g.
+#'   `"yearly_total"`, `"stadsdeel"`).
+c4c_add_incidence <- function(df, full_df, breakdown_id) {
+  denom_name <- unique(c4c_incidence_denominator_name(df$name))
+  stopifnot(
+    "df must contain exactly one incidence-eligible outcome name" =
+      length(denom_name) == 1 && !is.na(denom_name)
+  )
+  denom <- dplyr::filter(
+    full_df,
+    .data$breakdown == breakdown_id,
+    .data$name == denom_name,
+    .data$type == "n_totaal_gebruikers"
+  )
+  denom <- dplyr::select(denom, "year", "groep", at_risk = "value")
+  out <- dplyr::left_join(df, denom, by = c("year", "groep"))
+  dplyr::mutate(out, waarde = .data$value / .data$at_risk * 100)
+}
+
+#' Dispatch to [c4c_add_metric()] or [c4c_add_incidence()] based on
+#' `metric` -- shared by every tab that lets the user pick a metric, since
+#' `"incidence"` needs the full outcomes table and the breakdown id that
+#' the other metrics don't.
+#' @param df A single-outcome slice from [c4c_filter_outcome()].
+#' @param metric One of `"percentage"`, `"rate_per_1000"`, `"absolute"`,
+#'   `"incidence"`.
+#' @param full_df Full result of [c4c_load_outcomes()] -- required only
+#'   when `metric` is `"incidence"`.
+#' @param breakdown_id The breakdown `df` was filtered to -- required only
+#'   when `metric` is `"incidence"`.
+c4c_apply_metric <- function(df, metric, full_df = NULL, breakdown_id = NULL) {
+  if (identical(metric, "incidence")) {
+    c4c_add_incidence(df, full_df, breakdown_id)
+  } else {
+    c4c_add_metric(df, metric)
+  }
 }
 
 #' Relabel a category column through the shared Dictionary
@@ -306,22 +385,45 @@ c4c_palette <- function(n, base) {
   grDevices::colorRampPalette(base)(n)
 }
 
-#' Data behind the "Zorgpad" tab's flagship chart: for every year, the
-#' number of people with a first major CVD event who had (`"met"`) or had
-#' not (`"zonder"`) already used risk-factor medication beforehand.
+#' Data behind the "Zorgpad" tab's event x medication cross-tab chart: for
+#' every year, the number of people in each selected group -- see
+#' [C4C_ZORGPAD_ALL_NAMES]. Also derives `heeft_event`/`heeft_medicatie`
+#' factor columns so the chart can facet by one and fill/dodge by the
+#' other, since the two "event" groups (a few hundred people) and the two
+#' "no event" groups (most of the population) sit on wildly different
+#' scales -- faceting with a free y-axis keeps both readable.
 #' @param df Result of [c4c_load_outcomes()].
-#' @return Tibble with columns `year`, `name`, `groep_label`, `waarde`.
-c4c_zorgpad_data <- function(df) {
+#' @param names Character vector of outcome names to include (a subset of
+#'   [C4C_ZORGPAD_ALL_NAMES]) -- lets the "Zorgpad" tab's group picker show
+#'   only the selected groups. Defaults to all 4.
+#' @param years Optional integer vector to restrict `year` to.
+#' @return Tibble with columns `year`, `name`, `groep_label`, `heeft_event`,
+#'   `heeft_medicatie`, `waarde`.
+c4c_zorgpad_data <- function(df, names = C4C_ZORGPAD_ALL_NAMES, years = NULL) {
   out <- dplyr::filter(
     df,
     .data$breakdown == "yearly_total",
-    .data$name %in% C4C_ZORGPAD_EVENT_NAMES,
+    .data$name %in% names,
     .data$type == "n_totaal_gebruikers"
   )
-  out <- dplyr::mutate(out, groep_label = c4c_outcome_label(.data$name), waarde = .data$value)
-  out$groep_label <- factor(
-    out$groep_label,
-    levels = c4c_outcome_label(rev(C4C_ZORGPAD_EVENT_NAMES))
+  if (!is.null(years)) {
+    out <- dplyr::filter(out, .data$year %in% years)
+  }
+  out <- dplyr::mutate(
+    out,
+    groep_label = c4c_outcome_label(.data$name),
+    waarde = .data$value,
+    heeft_event = ifelse(
+      grepl("^heeft_eerste_event", .data$name), "Wel gebeurtenis", "Geen gebeurtenis"
+    ),
+    heeft_medicatie = ifelse(
+      grepl("met_medicatie$", .data$name), "Met eerdere medicatie", "Zonder eerdere medicatie"
+    )
+  )
+  out$groep_label <- factor(out$groep_label, levels = c4c_outcome_label(C4C_ZORGPAD_ALL_NAMES))
+  out$heeft_event <- factor(out$heeft_event, levels = c("Wel gebeurtenis", "Geen gebeurtenis"))
+  out$heeft_medicatie <- factor(
+    out$heeft_medicatie, levels = c("Zonder eerdere medicatie", "Met eerdere medicatie")
   )
   out
 }

@@ -11,8 +11,6 @@
 # nearest 10) -- see `utils/cardio_data.R` for the loader and pure helper
 # functions, and `data/metadata/outcome_metadata.R` for what each raw
 # outcome column means.
-#
-# (Deploy trigger: no functional change. Re-check after SFTP permissions update.)
 
 source("data/metadata/brand_colors.R")
 source("data/metadata/outcome_metadata.R")
@@ -115,13 +113,16 @@ app_ui <- fluidPage(
             "overzicht_indicator", "Indicator",
             choices = c4c_outcome_choices(), selected = DEFAULT_INDICATOR
           ),
-          uiOutput("overzicht_metric_ui")
+          uiOutput("overzicht_metric_ui"),
+          uiOutput("overzicht_jaren_ui")
         ),
         column(
           width = 9,
           plotOutput("overzicht_plot"),
           br(),
-          chart_data_downloads_ui("overzicht_downloads", chart_type = "line")
+          chart_data_downloads_ui("overzicht_downloads", chart_type = "line"),
+          h4("Onderliggende data"),
+          tableOutput("overzicht_table")
         )
       )
     ),
@@ -144,9 +145,15 @@ app_ui <- fluidPage(
       fluidRow(
         column(
           width = 3,
+          checkboxGroupInput(
+            "zorgpad_groepen", "Groepen",
+            choices = stats::setNames(C4C_ZORGPAD_ALL_NAMES, c4c_outcome_label(C4C_ZORGPAD_ALL_NAMES)),
+            selected = C4C_ZORGPAD_ALL_NAMES
+          ),
+          uiOutput("zorgpad_jaren_ui"),
           checkboxInput(
             "zorgpad_pct",
-            "Toon als aandeel (%) van eerste gebeurtenissen dat jaar",
+            "Toon als aandeel (%) binnen 'wel'/'geen gebeurtenis'",
             value = FALSE
           )
         ),
@@ -154,7 +161,9 @@ app_ui <- fluidPage(
           width = 9,
           plotOutput("zorgpad_plot"),
           br(),
-          chart_data_downloads_ui("zorgpad_downloads", chart_type = "stacked_bar")
+          chart_data_downloads_ui("zorgpad_downloads", chart_type = "stacked_bar"),
+          h4("Onderliggende data"),
+          tableOutput("zorgpad_table")
         )
       )
     ),
@@ -190,7 +199,12 @@ app_ui <- fluidPage(
           conditionalPanel(
             condition = "!input.achtergrond_trend",
             uiOutput("achtergrond_jaar_ui")
-          )
+          ),
+          conditionalPanel(
+            condition = "input.achtergrond_trend",
+            uiOutput("achtergrond_jaren_ui")
+          ),
+          uiOutput("achtergrond_groepen_ui")
         ),
         column(
           width = 9,
@@ -203,7 +217,9 @@ app_ui <- fluidPage(
           conditionalPanel(
             condition = "input.achtergrond_trend",
             chart_data_downloads_ui("achtergrond_downloads_trend", chart_type = "line")
-          )
+          ),
+          h4("Onderliggende data"),
+          tableOutput("achtergrond_table")
         )
       )
     ),
@@ -228,6 +244,7 @@ app_ui <- fluidPage(
           ),
           uiOutput("gebied_metric_ui"),
           uiOutput("gebied_jaar_ui"),
+          uiOutput("gebied_gebieden_ui"),
           conditionalPanel(
             condition = "input.gebied_niveau == 'stadsdeel'",
             radioButtons(
@@ -242,7 +259,9 @@ app_ui <- fluidPage(
             condition = "input.gebied_niveau != 'stadsdeel' || input.gebied_weergave == 'bar'",
             plotOutput("gebied_plot", height = "620px"),
             br(),
-            chart_data_downloads_ui("gebied_downloads", chart_type = "bar")
+            chart_data_downloads_ui("gebied_downloads", chart_type = "bar"),
+            h4("Onderliggende data"),
+            tableOutput("gebied_table")
           ),
           conditionalPanel(
             condition = "input.gebied_niveau == 'stadsdeel' && input.gebied_weergave == 'map'",
@@ -293,7 +312,7 @@ server <- function(input, output, session) {
 
   output$overzicht_metric_ui <- renderUI({
     kind <- c4c_outcome_kind(input$overzicht_indicator)
-    selectInput("overzicht_metric", "Weergave", choices = c4c_available_metrics(kind))
+    selectInput("overzicht_metric", "Weergave", choices = c4c_available_metrics(kind, input$overzicht_indicator))
   })
 
   output$overzicht_kpis <- renderUI({
@@ -324,12 +343,26 @@ server <- function(input, output, session) {
     paste0(c4c_outcome_label(input$overzicht_indicator), " — Amsterdam")
   })
 
-  overzicht_plot_data <- reactive({
-    shiny::req(input$overzicht_indicator, input$overzicht_metric)
+  # All years for the chosen indicator, before the user's own year
+  # selection is applied -- feeds the year picker's choices and the plot
+  # data alike.
+  overzicht_available_data <- reactive({
+    shiny::req(input$overzicht_indicator)
     kind <- c4c_outcome_kind(input$overzicht_indicator)
     outcome_type <- c4c_outcome_type(kind)
-    df <- c4c_filter_outcome(OUTCOMES_DATA, "yearly_total", input$overzicht_indicator, outcome_type)
-    df <- c4c_add_metric(df, input$overzicht_metric)
+    c4c_filter_outcome(OUTCOMES_DATA, "yearly_total", input$overzicht_indicator, outcome_type)
+  })
+
+  output$overzicht_jaren_ui <- renderUI({
+    years <- sort(unique(overzicht_available_data()$year))
+    shiny::validate(shiny::need(length(years) > 0, "Geen jaren beschikbaar voor deze selectie."))
+    selectInput("overzicht_jaren", "Jaren", choices = years, selected = years, multiple = TRUE)
+  })
+
+  overzicht_plot_data <- reactive({
+    shiny::req(input$overzicht_metric, input$overzicht_jaren)
+    df <- dplyr::filter(overzicht_available_data(), .data$year %in% as.integer(input$overzicht_jaren))
+    df <- c4c_apply_metric(df, input$overzicht_metric, full_df = OUTCOMES_DATA, breakdown_id = "yearly_total")
     df$reeks <- c4c_outcome_label(input$overzicht_indicator)
     df
   })
@@ -338,7 +371,7 @@ server <- function(input, output, session) {
     df <- overzicht_plot_data()
     shiny::validate(shiny::need(
       nrow(df) > 0,
-      "Onvoldoende data beschikbaar voor deze indicator (mogelijk afgeschermd vanwege CBS-geheimhoudingsregels)."
+      "Onvoldoende data beschikbaar voor deze selectie (mogelijk afgeschermd vanwege CBS-geheimhoudingsregels, of geen jaren geselecteerd)."
     ))
     ggplot(df, aes(x = year, y = waarde)) +
       geom_line(color = ahti_branding$colors$helder_blauw, linewidth = 1) +
@@ -348,6 +381,14 @@ server <- function(input, output, session) {
         x = "Jaar", y = c4c_metric_axis_label(input$overzicht_metric)
       ) +
       theme_minimal()
+  })
+
+  output$overzicht_table <- renderTable({
+    df <- overzicht_plot_data()
+    shiny::req(nrow(df) > 0)
+    df %>%
+      dplyr::arrange(.data$year) %>%
+      dplyr::transmute(Jaar = .data$year, Waarde = round(.data$waarde, 2))
   })
 
   chart_data_downloads_server(
@@ -374,8 +415,24 @@ server <- function(input, output, session) {
     "Eerste hartinfarct of beroerte: met of zonder eerdere medicatie (Amsterdam)"
   })
 
-  zorgpad_data <- reactive({
+  # All 4 groups, all years -- feeds the year picker's choices.
+  zorgpad_all_data <- reactive({
     c4c_zorgpad_data(OUTCOMES_DATA)
+  })
+
+  output$zorgpad_jaren_ui <- renderUI({
+    years <- sort(unique(zorgpad_all_data()$year))
+    shiny::validate(shiny::need(length(years) > 0, "Geen jaren beschikbaar."))
+    selectInput("zorgpad_jaren", "Jaren", choices = years, selected = years, multiple = TRUE)
+  })
+
+  zorgpad_data <- reactive({
+    shiny::req(input$zorgpad_groepen, input$zorgpad_jaren)
+    c4c_zorgpad_data(
+      OUTCOMES_DATA,
+      names = input$zorgpad_groepen,
+      years = as.integer(input$zorgpad_jaren)
+    )
   })
 
   output$zorgpad_kpis <- renderUI({
@@ -401,12 +458,20 @@ server <- function(input, output, session) {
 
   output$zorgpad_plot <- renderPlot({
     df <- zorgpad_data()
-    shiny::validate(shiny::need(nrow(df) > 0, "Onvoldoende data beschikbaar."))
+    shiny::validate(shiny::need(
+      nrow(df) > 0,
+      "Onvoldoende data beschikbaar voor deze selectie (geen groepen/jaren geselecteerd, of afgeschermd vanwege CBS-geheimhoudingsregels)."
+    ))
     show_pct <- isTRUE(input$zorgpad_pct)
-    position <- if (show_pct) "fill" else "stack"
-    y_lab <- if (show_pct) "Aandeel van eerste gebeurtenissen" else "Aantal personen"
-    p <- ggplot(df, aes(x = factor(year), y = waarde, fill = groep_label)) +
+    position <- if (show_pct) "fill" else "dodge"
+    y_lab <- if (show_pct) "Aandeel binnen 'wel'/'geen gebeurtenis'" else "Aantal personen"
+    # Facetted by heeft_event (free y-axis): the two "event" groups (a few
+    # honderd people) and the two "no event" groups (most of the
+    # population) sit on wildly different scales -- one shared axis would
+    # make the event bars invisible.
+    p <- ggplot(df, aes(x = factor(year), y = waarde, fill = heeft_medicatie)) +
       geom_col(position = position) +
+      facet_wrap(~heeft_event, scales = "free_y") +
       scale_fill_manual(values = c(ahti_branding$colors$fris_rood, ahti_branding$colors$helder_blauw)) +
       labs(title = zorgpad_title(), x = "Jaar", y = y_lab, fill = NULL) +
       theme_minimal() +
@@ -417,13 +482,26 @@ server <- function(input, output, session) {
     p
   })
 
+  output$zorgpad_table <- renderTable({
+    df <- zorgpad_data()
+    shiny::req(nrow(df) > 0)
+    df %>%
+      dplyr::arrange(.data$year, .data$groep_label) %>%
+      dplyr::transmute(
+        Jaar = .data$year,
+        Groep = as.character(.data$groep_label),
+        Aantal = round(.data$waarde)
+      )
+  })
+
   chart_data_downloads_server(
     id = "zorgpad_downloads",
     data = zorgpad_data,
     chart_type = "stacked_bar",
     category_col = "year",
-    series_col = "groep_label",
+    series_col = "heeft_medicatie",
     value_col = "waarde",
+    facet_col = "heeft_event",
     filename_prefix = "cardio4cities_zorgpad",
     agg_fun = NULL,
     figure_title = zorgpad_title,
@@ -439,7 +517,7 @@ server <- function(input, output, session) {
 
   output$achtergrond_metric_ui <- renderUI({
     kind <- c4c_outcome_kind(input$achtergrond_indicator)
-    selectInput("achtergrond_metric", "Weergave", choices = c4c_available_metrics(kind))
+    selectInput("achtergrond_metric", "Weergave", choices = c4c_available_metrics(kind, input$achtergrond_indicator))
   })
 
   achtergrond_title <- reactive({
@@ -448,14 +526,15 @@ server <- function(input, output, session) {
     paste0(c4c_outcome_label(input$achtergrond_indicator), " naar ", dim_label)
   })
 
-  # All years for the chosen indicator/dimension -- feeds both the year
-  # picker (bar mode) and the trend-line chart/download directly.
-  achtergrond_base_data <- reactive({
+  # All years and all groups for the chosen indicator/dimension, before the
+  # user's own year/group selection is applied -- feeds the year picker
+  # (bar mode), the group picker (both modes), and the trend-line data.
+  achtergrond_unfiltered_data <- reactive({
     shiny::req(input$achtergrond_indicator, input$achtergrond_dimensie, input$achtergrond_metric)
     kind <- c4c_outcome_kind(input$achtergrond_indicator)
     outcome_type <- c4c_outcome_type(kind)
     df <- c4c_filter_outcome(OUTCOMES_DATA, input$achtergrond_dimensie, input$achtergrond_indicator, outcome_type)
-    df <- c4c_add_metric(df, input$achtergrond_metric)
+    df <- c4c_apply_metric(df, input$achtergrond_metric, full_df = OUTCOMES_DATA, breakdown_id = input$achtergrond_dimensie)
     df$groep_label <- c4c_relabel_groep(
       c4c_order_groep(df$groep, input$achtergrond_dimensie),
       input$achtergrond_dimensie
@@ -465,9 +544,36 @@ server <- function(input, output, session) {
   })
 
   output$achtergrond_jaar_ui <- renderUI({
-    years <- sort(unique(achtergrond_base_data()$year), decreasing = TRUE)
+    years <- sort(unique(achtergrond_unfiltered_data()$year), decreasing = TRUE)
     shiny::validate(shiny::need(length(years) > 0, "Geen jaren beschikbaar voor deze selectie."))
     selectInput("achtergrond_jaar", "Jaar", choices = years, selected = years[1])
+  })
+
+  output$achtergrond_jaren_ui <- renderUI({
+    years <- sort(unique(achtergrond_unfiltered_data()$year))
+    shiny::validate(shiny::need(length(years) > 0, "Geen jaren beschikbaar voor deze selectie."))
+    selectInput("achtergrond_jaren", "Jaren", choices = years, selected = years, multiple = TRUE)
+  })
+
+  output$achtergrond_groepen_ui <- renderUI({
+    groepen <- levels(droplevels(c4c_order_groep(unique(achtergrond_unfiltered_data()$groep), input$achtergrond_dimensie)))
+    if (length(groepen) == 0) groepen <- sort(unique(achtergrond_unfiltered_data()$groep))
+    labels <- c4c_relabel_groep(groepen, input$achtergrond_dimensie)
+    checkboxGroupInput(
+      "achtergrond_groepen", "Groepen",
+      choices = stats::setNames(groepen, labels), selected = groepen
+    )
+  })
+
+  # Both years (in trend mode) and groups (both modes) selected by the user.
+  achtergrond_base_data <- reactive({
+    shiny::req(input$achtergrond_groepen)
+    df <- dplyr::filter(achtergrond_unfiltered_data(), .data$groep %in% input$achtergrond_groepen)
+    if (isTRUE(input$achtergrond_trend)) {
+      shiny::req(input$achtergrond_jaren)
+      df <- dplyr::filter(df, .data$year %in% as.integer(input$achtergrond_jaren))
+    }
+    df
   })
 
   # Single-year slice, for the bar chart/download.
@@ -482,7 +588,7 @@ server <- function(input, output, session) {
       df <- achtergrond_base_data()
       shiny::validate(shiny::need(
         nrow(df) > 0,
-        "Onvoldoende data beschikbaar voor deze selectie (mogelijk afgeschermd vanwege CBS-geheimhoudingsregels, of nog niet gemeten in deze periode)."
+        "Onvoldoende data beschikbaar voor deze selectie (geen groepen/jaren geselecteerd, mogelijk afgeschermd vanwege CBS-geheimhoudingsregels, of nog niet gemeten in deze periode)."
       ))
       n_groups <- length(unique(df$groep_label))
       ggplot(df, aes(x = year, y = waarde, color = groep_label, group = groep_label)) +
@@ -496,7 +602,7 @@ server <- function(input, output, session) {
       df <- achtergrond_bar_data()
       shiny::validate(shiny::need(
         nrow(df) > 0,
-        "Onvoldoende data beschikbaar voor deze selectie (mogelijk afgeschermd vanwege CBS-geheimhoudingsregels)."
+        "Onvoldoende data beschikbaar voor deze selectie (geen groepen geselecteerd, of afgeschermd vanwege CBS-geheimhoudingsregels)."
       ))
       ggplot(df, aes(x = groep_label, y = waarde)) +
         geom_col(fill = ahti_branding$colors$helder_blauw) +
@@ -504,6 +610,18 @@ server <- function(input, output, session) {
         theme_minimal() +
         theme(axis.text.x = element_text(angle = 30, hjust = 1))
     }
+  })
+
+  output$achtergrond_table <- renderTable({
+    df <- if (isTRUE(input$achtergrond_trend)) achtergrond_base_data() else achtergrond_bar_data()
+    shiny::req(nrow(df) > 0)
+    df %>%
+      dplyr::arrange(.data$year, .data$groep_label) %>%
+      dplyr::transmute(
+        Jaar = .data$year,
+        Groep = as.character(.data$groep_label),
+        Waarde = round(.data$waarde, 2)
+      )
   })
 
   chart_data_downloads_server(
@@ -546,7 +664,7 @@ server <- function(input, output, session) {
 
   output$gebied_metric_ui <- renderUI({
     kind <- c4c_outcome_kind(input$gebied_indicator)
-    selectInput("gebied_metric", "Weergave", choices = c4c_available_metrics(kind))
+    selectInput("gebied_metric", "Weergave", choices = c4c_available_metrics(kind, input$gebied_indicator))
   })
 
   gebied_title <- reactive({
@@ -568,10 +686,29 @@ server <- function(input, output, session) {
     selectInput("gebied_jaar", "Jaar", choices = years, selected = years[1])
   })
 
+  output$gebied_gebieden_ui <- renderUI({
+    gebieden <- sort(unique(gebied_available_data()$groep))
+    shiny::validate(shiny::need(length(gebieden) > 0, "Geen gebieden beschikbaar voor deze selectie."))
+    labels <- c4c_relabel_groep(gebieden, input$gebied_niveau)
+    selectInput(
+      "gebied_gebieden", "Gebieden",
+      choices = stats::setNames(gebieden, labels), selected = gebieden, multiple = TRUE
+    )
+  })
+
+  # Single-year slice with the user's own metric/area selection applied --
+  # shared by the bar chart, the map, the download and the data table.
+  gebied_selected_data <- reactive({
+    shiny::req(input$gebied_jaar, input$gebied_metric, input$gebied_gebieden)
+    df <- dplyr::filter(
+      gebied_available_data(),
+      .data$year == as.integer(input$gebied_jaar), .data$groep %in% input$gebied_gebieden
+    )
+    c4c_apply_metric(df, input$gebied_metric, full_df = OUTCOMES_DATA, breakdown_id = input$gebied_niveau)
+  })
+
   gebied_plot_data <- reactive({
-    shiny::req(input$gebied_jaar, input$gebied_metric)
-    df <- dplyr::filter(gebied_available_data(), .data$year == as.integer(input$gebied_jaar))
-    df <- c4c_add_metric(df, input$gebied_metric)
+    df <- gebied_selected_data()
     df$groep_label <- c4c_relabel_groep(df$groep, input$gebied_niveau)
     df$reeks <- c4c_outcome_label(input$gebied_indicator)
     df
@@ -581,7 +718,7 @@ server <- function(input, output, session) {
     df <- gebied_plot_data()
     shiny::validate(shiny::need(
       nrow(df) > 0,
-      "Onvoldoende data beschikbaar voor deze selectie (mogelijk afgeschermd vanwege CBS-geheimhoudingsregels)."
+      "Onvoldoende data beschikbaar voor deze selectie (geen gebieden geselecteerd, of afgeschermd vanwege CBS-geheimhoudingsregels)."
     ))
     ggplot(df, aes(x = stats::reorder(groep_label, waarde), y = waarde)) +
       geom_col(fill = ahti_branding$colors$helder_blauw) +
@@ -590,12 +727,17 @@ server <- function(input, output, session) {
       theme_minimal()
   })
 
+  output$gebied_table <- renderTable({
+    df <- gebied_plot_data()
+    shiny::req(nrow(df) > 0)
+    df %>%
+      dplyr::arrange(dplyr::desc(.data$waarde)) %>%
+      dplyr::transmute(Gebied = as.character(.data$groep_label), Waarde = round(.data$waarde, 2))
+  })
+
   gebied_map_data <- reactive({
-    shiny::req(input$gebied_jaar, input$gebied_metric)
     shiny::validate(shiny::need(identical(input$gebied_niveau, "stadsdeel"), "Kaart is alleen beschikbaar voor Stadsdeel."))
-    df <- dplyr::filter(gebied_available_data(), .data$year == as.integer(input$gebied_jaar))
-    df <- c4c_add_metric(df, input$gebied_metric)
-    c4c_geo_join_stadsdeel(GEO_STADSDEEL, df)
+    c4c_geo_join_stadsdeel(GEO_STADSDEEL, gebied_selected_data())
   })
 
   output$gebied_map <- renderPlot({

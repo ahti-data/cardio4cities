@@ -13,17 +13,31 @@ rounded to the nearest 10) — see `utils/cardio_data.R`'s header comment and
 Tabs:
 
 - **Overzicht** — Amsterdam-wide KPIs and a trend line for any of the 31
-  outcomes, 2006–2024.
-- **Zorgpad** — the project's flagship comparison: of everyone with a first
-  major cardiovascular event, how many had already used risk-factor
-  medication beforehand vs. not.
+  outcomes, 2006–2024; pick which years appear.
+- **Zorgpad** — the project's flagship comparison, as a 2×2 cross-tab: of
+  every Amsterdammer that year, did they have a first major cardiovascular
+  event, and had they already used risk-factor medication beforehand? Pick
+  any subset of the 4 groups and years; the "event" and "no event" groups
+  are faceted with independent y-axes since they sit on wildly different
+  scales.
 - **Naar achtergrond** — any outcome split by a demographic dimension
   (geslacht, leeftijd, migratieachtergrond, SESWOA, huishouden, inkomen),
-  either for one year or as a trend.
+  either for one year or as a trend; deselect specific groups or years.
 - **Naar gebied** — any outcome ranked by stadsdeel or gebied (wijk_25) for
-  one chosen year.
+  one chosen year (stadsdeel also as a choropleth map); deselect specific
+  areas.
 - **Favorites / Export history / Manage templates / Dictionary** — shared
   template tabs, see below.
+
+Every chart has a plain data table underneath showing exactly what's
+plotted. Most binary outcomes offer an extra **incidence** metric for
+outcomes named `heeft_eerste_jaar_...` (e.g. a first-ever hypertension
+diagnosis that year): unlike the usual population-wide percentage, this
+divides by the matching `heeft_geen_eerdere_...` outcome's own count — the
+population that hadn't had the event/started the medication yet, i.e.
+genuinely at risk of a first occurrence that year (see
+`c4c_add_incidence()`/`c4c_incidence_denominator_name()` in
+`utils/cardio_data.R`).
 
 The underlying data lives in `data/cardio4cities_outcomes.csv` (one
 long-format row per breakdown/category/year/outcome/metric type — see

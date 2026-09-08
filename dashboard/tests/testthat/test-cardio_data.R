@@ -46,10 +46,43 @@ test_that("c4c_available_metrics offers the right choices per kind, default firs
   expect_true("absolute" %in% cont_metrics)
 })
 
+test_that("c4c_available_metrics adds an incidence choice only for incidence-eligible outcomes", {
+  with_incidence <- c4c_available_metrics("binary", "heeft_eerste_jaar_hi_event")
+  expect_true("incidence" %in% with_incidence)
+
+  without_incidence <- c4c_available_metrics("binary", "heeft_risicofactor_medicatie")
+  expect_false("incidence" %in% without_incidence)
+
+  # No name given at all -- same as before, no incidence choice.
+  expect_false("incidence" %in% c4c_available_metrics("binary"))
+})
+
+test_that("c4c_incidence_denominator_name / c4c_is_incidence_eligible identify eerste_jaar outcomes", {
+  expect_equal(
+    c4c_incidence_denominator_name("heeft_eerste_jaar_hi_event"),
+    "heeft_geen_eerdere_hi_event"
+  )
+  expect_true(c4c_is_incidence_eligible("heeft_eerste_jaar_hi_event"))
+
+  # Not an "eerste_jaar" outcome at all.
+  expect_true(is.na(c4c_incidence_denominator_name("heeft_risicofactor_medicatie")))
+  expect_false(c4c_is_incidence_eligible("heeft_risicofactor_medicatie"))
+
+  # The Zorgpad cross-tab outcomes have no matching "geen_eerdere" counterpart.
+  expect_false(c4c_is_incidence_eligible("heeft_eerste_event_geen_medicatie"))
+
+  # Vectorized.
+  expect_equal(
+    c4c_incidence_denominator_name(c("heeft_eerste_jaar_hi_event", "heeft_risicofactor_medicatie")),
+    c("heeft_geen_eerdere_hi_event", NA_character_)
+  )
+})
+
 test_that("c4c_metric_axis_label has a label for every known metric", {
   expect_equal(c4c_metric_axis_label("percentage"), "% van de bevolking")
   expect_equal(c4c_metric_axis_label("rate_per_1000"), "per 1.000 inwoners")
   expect_equal(c4c_metric_axis_label("absolute"), "Aantal")
+  expect_equal(c4c_metric_axis_label("incidence"), "% van de risicogroep")
 })
 
 make_test_outcomes <- function() {
@@ -62,7 +95,13 @@ make_test_outcomes <- function() {
     "yearly_total",   "",         2023,  915280,    "heeft_eerste_event_met_medicatie_n_totaal_gebruikers", 1340, "heeft_eerste_event_met_medicatie",            "n_totaal_gebruikers",
     "yearly_total",   "",         2023,  915280,    "n_hartinfarct_or_acute_beroerte_lbz_sum_totaal_groep", 2350, "n_hartinfarct_or_acute_beroerte_lbz",         "sum_totaal_groep",
     "geslacht",       "Mannen",   2023,  450000,    "heeft_hypertensie_n_totaal_gebruikers",           60000, "heeft_hypertensie",                            "n_totaal_gebruikers",
-    "geslacht",       "Vrouwen",  2023,  465280,    "heeft_hypertensie_n_totaal_gebruikers",           70000, "heeft_hypertensie",                            "n_totaal_gebruikers"
+    "geslacht",       "Vrouwen",  2023,  465280,    "heeft_hypertensie_n_totaal_gebruikers",           70000, "heeft_hypertensie",                            "n_totaal_gebruikers",
+    "yearly_total",   "",         2023,  915280,    "heeft_geen_eerste_event_geen_medicatie_n_totaal_gebruikers", 750000, "heeft_geen_eerste_event_geen_medicatie", "n_totaal_gebruikers",
+    "yearly_total",   "",         2023,  915280,    "heeft_geen_eerste_event_met_medicatie_n_totaal_gebruikers", 163700, "heeft_geen_eerste_event_met_medicatie", "n_totaal_gebruikers",
+    "yearly_total",   "",         2022,  900000,    "heeft_eerste_event_geen_medicatie_n_totaal_gebruikers", 400, "heeft_eerste_event_geen_medicatie",           "n_totaal_gebruikers",
+    "yearly_total",   "",         2022,  900000,    "heeft_eerste_event_met_medicatie_n_totaal_gebruikers", 1300, "heeft_eerste_event_met_medicatie",            "n_totaal_gebruikers",
+    "yearly_total",   "",         2023,  915280,    "heeft_eerste_jaar_hi_event_n_totaal_gebruikers",  90, "heeft_eerste_jaar_hi_event",                  "n_totaal_gebruikers",
+    "yearly_total",   "",         2023,  915280,    "heeft_geen_eerdere_hi_event_n_totaal_gebruikers", 910000, "heeft_geen_eerdere_hi_event",                 "n_totaal_gebruikers"
   )
 }
 
@@ -175,16 +214,50 @@ test_that("c4c_kpi_zorgpad computes the share of first events without prior medi
   expect_equal(round(kpi$eerste_event_zonder_medicatie_pct, 2), round(440 / 1780 * 100, 2))
 })
 
-test_that("c4c_zorgpad_data returns only the two first-event outcomes, labeled and factored", {
+test_that("c4c_zorgpad_data returns all 4 cross-tab groups by default, labeled and factored", {
   df <- make_test_outcomes()
-  out <- c4c_zorgpad_data(df)
-  expect_equal(nrow(out), 2)
+  out <- c4c_zorgpad_data(df, years = 2023)
+  expect_equal(nrow(out), 4)
   expect_true(is.factor(out$groep_label))
-  expect_setequal(
-    as.character(out$groep_label),
-    c("Eerste gebeurtenis, mét eerdere medicatie", "Eerste gebeurtenis, zonder eerdere medicatie")
-  )
-  expect_equal(sum(out$waarde), 1780)
+  expect_true(is.factor(out$heeft_event))
+  expect_true(is.factor(out$heeft_medicatie))
+
+  # Event/medicatie flags line up correctly per group.
+  by_name <- stats::setNames(seq_len(nrow(out)), out$name)
+  expect_equal(as.character(out$heeft_event[by_name["heeft_eerste_event_geen_medicatie"]]), "Wel gebeurtenis")
+  expect_equal(as.character(out$heeft_medicatie[by_name["heeft_eerste_event_geen_medicatie"]]), "Zonder eerdere medicatie")
+  expect_equal(as.character(out$heeft_event[by_name["heeft_geen_eerste_event_met_medicatie"]]), "Geen gebeurtenis")
+  expect_equal(as.character(out$heeft_medicatie[by_name["heeft_geen_eerste_event_met_medicatie"]]), "Met eerdere medicatie")
+
+  expect_equal(sum(out$waarde), 440 + 1340 + 750000 + 163700)
+})
+
+test_that("c4c_zorgpad_data respects a names subset and a years filter", {
+  df <- make_test_outcomes()
+  out <- c4c_zorgpad_data(df, names = C4C_ZORGPAD_EVENT_NAMES)
+  expect_setequal(out$name, C4C_ZORGPAD_EVENT_NAMES)
+  expect_setequal(out$year, c(2022, 2023))
+
+  out_2023 <- c4c_zorgpad_data(df, names = C4C_ZORGPAD_EVENT_NAMES, years = 2023)
+  expect_equal(out_2023$year, rep(2023, nrow(out_2023)))
+})
+
+test_that("c4c_add_incidence divides by the at-risk (geen_eerdere) population, not n_totaal", {
+  df <- make_test_outcomes()
+  numerator <- c4c_filter_outcome(df, "yearly_total", "heeft_eerste_jaar_hi_event", "n_totaal_gebruikers")
+  out <- c4c_add_incidence(numerator, df, "yearly_total")
+  expect_equal(out$waarde, 90 / 910000 * 100)
+})
+
+test_that("c4c_apply_metric dispatches to c4c_add_incidence only for the incidence metric", {
+  df <- make_test_outcomes()
+  numerator <- c4c_filter_outcome(df, "yearly_total", "heeft_eerste_jaar_hi_event", "n_totaal_gebruikers")
+
+  incidence_out <- c4c_apply_metric(numerator, "incidence", full_df = df, breakdown_id = "yearly_total")
+  expect_equal(incidence_out$waarde, 90 / 910000 * 100)
+
+  pct_out <- c4c_apply_metric(numerator, "percentage")
+  expect_equal(pct_out$waarde, 90 / 915280 * 100)
 })
 
 test_that("c4c_palette reuses the base palette when it already has enough colours", {
