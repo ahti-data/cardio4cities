@@ -49,11 +49,15 @@ Tabs:
   those inputs resets them back to that new selection's own data range. The
   low/high *colors* themselves are also user-adjustable: a plain HTML5 color
   picker for each end (`color_picker_input()` — no extra package, since this
-  deployment can't reach CRAN to install one), plus 3 curated preset
-  gradients (`GEBIED_KLEUR_PRESETS`/`color_preset_buttons()`, red/blue/green)
-  to click instead of picking two colors by hand. Below the map, a table
-  always shows both the percentage *and* the absolute count for every area,
-  regardless of which metric is selected in the dropdown above.
+  deployment can't reach CRAN to install one), plus two rows of 3 curated
+  presets to click instead of picking two colors by hand:
+  `GEBIED_KLEUR_PRESETS` (one hue, a light tint up to its full color --
+  red/blue/green) and `GEBIED_KLEUR_PRESETS_TWEEKLEURIG` (two genuinely
+  different colors, one per end -- blauw naar rood/groen naar paars/
+  grijsblauw naar rood), both rendered via the same `color_preset_buttons()`.
+  Below the map, a table always shows both the percentage *and* the absolute
+  count for every area, regardless of which metric is selected in the
+  dropdown above.
 - **Favorites / Export history / Manage templates / Dictionary** — shared
   template tabs, see below.
 

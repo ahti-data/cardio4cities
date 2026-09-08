@@ -121,13 +121,23 @@ color_preset_buttons <- function(low_input_id, high_input_id, presets) {
 
 #' This dashboard's 3 curated low/high color-scale presets for the "Naar
 #' gebied" map, passed to `color_preset_buttons()`. Each is a light tint of
-#' its high color paired with that color itself, kept consistent with
-#' `ahti_branding$colors` (the first, red, matches the map's own long-standing
-#' default).
+#' its high color paired with that color itself (one hue, light to full),
+#' kept consistent with `ahti_branding$colors` (the first, red, matches the
+#' map's own long-standing default).
 GEBIED_KLEUR_PRESETS <- list(
   list(label = "Rood (standaard)", low = "#FBEAE9", high = ahti_branding$colors$fris_rood),
   list(label = "Blauw", low = "#E3F4FB", high = ahti_branding$colors$helder_blauw),
   list(label = "Groen", low = "#E3F7ED", high = ahti_branding$colors$fris_groen)
+)
+
+#' 3 more curated presets, this time with a genuinely different color at
+#' each end (not one hue's light tint) -- for a user who wants the minimum
+#' and maximum to read as two distinct colors rather than one color's
+#' intensity.
+GEBIED_KLEUR_PRESETS_TWEEKLEURIG <- list(
+  list(label = "Blauw naar rood", low = ahti_branding$colors$helder_blauw, high = ahti_branding$colors$fris_rood),
+  list(label = "Groen naar paars", low = ahti_branding$colors$fris_groen, high = ahti_branding$colors$diep_paars),
+  list(label = "Grijsblauw naar rood", low = ahti_branding$colors$grijs_blauw, high = ahti_branding$colors$fris_rood)
 )
 
 #' Dutch-formatted number (`.` thousands separator, `,` decimals) for a data
@@ -349,8 +359,10 @@ app_ui <- fluidPage(
               numericInput("gebied_kleur_max", "Kleurschaal: maximum", value = NA),
               color_picker_input("gebied_kleur_laag", "Kleurschaal: kleur bij minimum", value = "#FBEAE9"),
               color_picker_input("gebied_kleur_hoog", "Kleurschaal: kleur bij maximum", value = ahti_branding$colors$fris_rood),
-              tags$label("Of kies een standaardcombinatie", class = "control-label", style = "font-weight: normal; color: #666;"),
-              color_preset_buttons("gebied_kleur_laag", "gebied_kleur_hoog", GEBIED_KLEUR_PRESETS)
+              tags$label("Of kies een standaardcombinatie (één kleur)", class = "control-label", style = "font-weight: normal; color: #666;"),
+              color_preset_buttons("gebied_kleur_laag", "gebied_kleur_hoog", GEBIED_KLEUR_PRESETS),
+              tags$label("Of een combinatie met twee kleuren", class = "control-label", style = "font-weight: normal; color: #666;"),
+              color_preset_buttons("gebied_kleur_laag", "gebied_kleur_hoog", GEBIED_KLEUR_PRESETS_TWEEKLEURIG)
             )
           )
         ),
