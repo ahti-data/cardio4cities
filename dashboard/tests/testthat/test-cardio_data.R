@@ -187,33 +187,6 @@ test_that("c4c_relabel_groep preserves factor level order while relabeling", {
   })
 })
 
-test_that("c4c_value_for and c4c_population_for return NA (not an error) for a missing combination", {
-  df <- make_test_outcomes()
-  expect_equal(c4c_value_for(df, 2023, "heeft_risicofactor_medicatie"), 143760)
-  expect_true(is.na(c4c_value_for(df, 2099, "heeft_risicofactor_medicatie")))
-  expect_true(is.na(c4c_value_for(df, 2023, "heeft_onbekend")))
-  expect_equal(c4c_population_for(df, 2023), 915280)
-  expect_true(is.na(c4c_population_for(df, 1999)))
-})
-
-test_that("c4c_kpi_overzicht computes shares from the yearly_total breakdown", {
-  df <- make_test_outcomes()
-  kpi <- c4c_kpi_overzicht(df, 2023)
-  expect_equal(kpi$population, 915280)
-  expect_equal(kpi$medicatie_n, 143760)
-  expect_equal(round(kpi$medicatie_pct, 2), round(143760 / 915280 * 100, 2))
-  expect_equal(kpi$event_n, 2160)
-})
-
-test_that("c4c_kpi_zorgpad computes the share of first events without prior medication", {
-  df <- make_test_outcomes()
-  kpi <- c4c_kpi_zorgpad(df, 2023)
-  expect_equal(kpi$eerste_event_met_medicatie_n, 1340)
-  expect_equal(kpi$eerste_event_zonder_medicatie_n, 440)
-  expect_equal(kpi$eerste_event_totaal_n, 1780)
-  expect_equal(round(kpi$eerste_event_zonder_medicatie_pct, 2), round(440 / 1780 * 100, 2))
-})
-
 test_that("c4c_zorgpad_data returns all 4 cross-tab groups by default, labeled and factored", {
   df <- make_test_outcomes()
   out <- c4c_zorgpad_data(df, years = 2023)

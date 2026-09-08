@@ -12,17 +12,18 @@ rounded to the nearest 10) — see `utils/cardio_data.R`'s header comment and
 
 Tabs:
 
-- **Overzicht** — Amsterdam-wide KPIs and a trend line for any of the 31
-  outcomes, 2006–2024; pick which years appear.
+- **Overzicht** — a trend line for any of the 31 outcomes, 2006–2024; pick
+  which years appear with a slider.
 - **Zorgpad** — the project's flagship comparison, as a 2×2 cross-tab: of
   every Amsterdammer that year, did they have a first major cardiovascular
   event, and had they already used risk-factor medication beforehand? Pick
-  any subset of the 4 groups and years; the "event" and "no event" groups
-  are faceted with independent y-axes since they sit on wildly different
-  scales.
+  any subset of the 4 groups and a year range via a slider; the "event" and
+  "no event" groups are faceted with independent y-axes since they sit on
+  wildly different scales.
 - **Naar achtergrond** — any outcome split by a demographic dimension
   (geslacht, leeftijd, migratieachtergrond, SESWOA, huishouden, inkomen),
-  either for one year or as a trend; deselect specific groups or years.
+  either for one year or as a trend over a slider-selected year range;
+  deselect specific groups.
 - **Naar gebied** — any outcome ranked by stadsdeel or gebied (wijk_25) for
   one chosen year (stadsdeel also as a choropleth map); deselect specific
   areas.

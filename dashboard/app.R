@@ -41,9 +41,12 @@ OUTCOMES_DATA <- c4c_load_outcomes()
 OUTCOMES_SOURCE_FILE <- basename(C4C_OUTCOMES_FILE)
 OUTCOMES_SOURCE_MTIME <- tc_format_source_mtime(C4C_OUTCOMES_FILE)
 
-LATEST_YEAR <- max(OUTCOMES_DATA$year[OUTCOMES_DATA$breakdown == "yearly_total"])
-
 GEO_STADSDEEL <- c4c_load_geo_stadsdeel()
+
+# Never print/format a number in scientific notation anywhere in this app
+# (tables included) -- matches the pipeline's own `options(scipen = 999)`
+# in `code/00_inputs.R`.
+options(scipen = 999)
 
 DEFAULT_INDICATOR <- "heeft_hartinfarct_of_acute_beroerte_lbz_of_do"
 
@@ -56,34 +59,22 @@ breakdown_select_choices <- function(breakdowns) {
   stats::setNames(names(breakdowns), vapply(breakdowns, function(b) b$label, character(1)))
 }
 
-#' One KPI card: a big number over a short label, with a coloured left
-#' accent bar. Presentation-only (not reusable business logic), so kept
-#' inline here rather than in `utils/` -- see CLAUDE.md's "Add reusable
-#' logic to utils/" convention, which is about shared logic, not one-off
-#' markup for this dashboard's own KPI row.
-kpi_box <- function(value, label, accent = ahti_branding$colors$helder_blauw) {
-  tags$div(
-    style = paste0(
-      "flex:1; min-width:190px; background:#fff; border:1px solid #E4E7EE; ",
-      "border-left:4px solid ", accent, "; border-radius:8px; ",
-      "padding:14px 16px; margin:6px;"
-    ),
-    tags$div(style = "font-size:26px; font-weight:700; color:#111827;", value),
-    tags$div(style = "font-size:13px; color:#6B7280; margin-top:2px;", label)
-  )
+#' Dutch-formatted number (`.` thousands separator, `,` decimals) for a data
+#' table cell -- never scientific notation, regardless of magnitude.
+#' @param x Numeric vector.
+#' @param digits Decimal places to round to.
+fmt_num <- function(x, digits = 2) {
+  format(round(x, digits), big.mark = ".", decimal.mark = ",", scientific = FALSE, trim = TRUE)
 }
 
-#' Dutch-formatted big number (`.` thousands separator), `"–"` for `NA`.
-fmt_n <- function(x) {
-  if (is.na(x)) return("–")
-  format(round(x), big.mark = ".", decimal.mark = ",", scientific = FALSE, trim = TRUE)
-}
-
-#' Dutch-formatted percentage (`,` decimal separator), `"–"` for `NA`.
-fmt_pct <- function(x, digits = 1) {
-  if (is.na(x)) return("–")
-  paste0(format(round(x, digits), decimal.mark = ",", nsmall = digits), "%")
-}
+# Shared ggplot label formatters -- never scientific notation:
+# - VALUE_AXIS_LABELS: for a count/percentage/rate axis, with a thousands
+#   separator (e.g. "600.000").
+# - YEAR_AXIS_LABELS: for a year axis -- no thousands separator, or 2024
+#   would render as "2.024".
+VALUE_AXIS_LABELS <- scales::label_number(big.mark = ".", decimal.mark = ",")
+YEAR_AXIS_LABELS <- scales::label_number(big.mark = "", accuracy = 1)
+YEAR_AXIS_BREAKS <- scales::breaks_pretty(n = 10)
 
 app_ui <- fluidPage(
   auth_ui_head(),
@@ -105,7 +96,6 @@ app_ui <- fluidPage(
           "zijn conform CBS-regels niet in dit bestand opgenomen."
         )
       )),
-      uiOutput("overzicht_kpis"),
       fluidRow(
         column(
           width = 3,
@@ -141,7 +131,6 @@ app_ui <- fluidPage(
           "opsporing en preventie."
         )
       )),
-      uiOutput("zorgpad_kpis"),
       fluidRow(
         column(
           width = 3,
@@ -315,29 +304,6 @@ server <- function(input, output, session) {
     selectInput("overzicht_metric", "Weergave", choices = c4c_available_metrics(kind, input$overzicht_indicator))
   })
 
-  output$overzicht_kpis <- renderUI({
-    kpi <- c4c_kpi_overzicht(OUTCOMES_DATA, LATEST_YEAR)
-    tags$div(
-      style = "display:flex; flex-wrap:wrap; margin: 0 -6px 10px;",
-      kpi_box(fmt_n(kpi$population), paste0("Inwoners Amsterdam (", LATEST_YEAR, ")")),
-      kpi_box(
-        fmt_pct(kpi$medicatie_pct),
-        "Gebruikt medicatie tegen een risicofactor",
-        accent = ahti_branding$colors$fris_groen
-      ),
-      kpi_box(
-        fmt_n(kpi$event_n),
-        paste0("Personen met hartinfarct/beroerte in ", LATEST_YEAR),
-        accent = ahti_branding$colors$fris_rood
-      ),
-      kpi_box(
-        fmt_pct(kpi$event_pct, digits = 2),
-        "Aandeel van de bevolking met zo'n gebeurtenis",
-        accent = ahti_branding$colors$fris_rood
-      )
-    )
-  })
-
   overzicht_title <- reactive({
     shiny::req(input$overzicht_indicator)
     paste0(c4c_outcome_label(input$overzicht_indicator), " — Amsterdam")
@@ -356,12 +322,19 @@ server <- function(input, output, session) {
   output$overzicht_jaren_ui <- renderUI({
     years <- sort(unique(overzicht_available_data()$year))
     shiny::validate(shiny::need(length(years) > 0, "Geen jaren beschikbaar voor deze selectie."))
-    selectInput("overzicht_jaren", "Jaren", choices = years, selected = years, multiple = TRUE)
+    sliderInput(
+      "overzicht_jaren", "Jaren",
+      min = min(years), max = max(years), value = c(min(years), max(years)),
+      step = 1, sep = ""
+    )
   })
 
   overzicht_plot_data <- reactive({
     shiny::req(input$overzicht_metric, input$overzicht_jaren)
-    df <- dplyr::filter(overzicht_available_data(), .data$year %in% as.integer(input$overzicht_jaren))
+    df <- dplyr::filter(
+      overzicht_available_data(),
+      .data$year >= input$overzicht_jaren[1], .data$year <= input$overzicht_jaren[2]
+    )
     df <- c4c_apply_metric(df, input$overzicht_metric, full_df = OUTCOMES_DATA, breakdown_id = "yearly_total")
     df$reeks <- c4c_outcome_label(input$overzicht_indicator)
     df
@@ -371,11 +344,13 @@ server <- function(input, output, session) {
     df <- overzicht_plot_data()
     shiny::validate(shiny::need(
       nrow(df) > 0,
-      "Onvoldoende data beschikbaar voor deze selectie (mogelijk afgeschermd vanwege CBS-geheimhoudingsregels, of geen jaren geselecteerd)."
+      "Onvoldoende data beschikbaar voor deze selectie (mogelijk afgeschermd vanwege CBS-geheimhoudingsregels)."
     ))
     ggplot(df, aes(x = year, y = waarde)) +
       geom_line(color = ahti_branding$colors$helder_blauw, linewidth = 1) +
       geom_point(color = ahti_branding$colors$helder_blauw, size = 2) +
+      scale_x_continuous(breaks = YEAR_AXIS_BREAKS, labels = YEAR_AXIS_LABELS) +
+      scale_y_continuous(labels = VALUE_AXIS_LABELS) +
       labs(
         title = overzicht_title(),
         x = "Jaar", y = c4c_metric_axis_label(input$overzicht_metric)
@@ -388,7 +363,7 @@ server <- function(input, output, session) {
     shiny::req(nrow(df) > 0)
     df %>%
       dplyr::arrange(.data$year) %>%
-      dplyr::transmute(Jaar = .data$year, Waarde = round(.data$waarde, 2))
+      dplyr::transmute(Jaar = .data$year, Waarde = fmt_num(.data$waarde))
   })
 
   chart_data_downloads_server(
@@ -423,7 +398,11 @@ server <- function(input, output, session) {
   output$zorgpad_jaren_ui <- renderUI({
     years <- sort(unique(zorgpad_all_data()$year))
     shiny::validate(shiny::need(length(years) > 0, "Geen jaren beschikbaar."))
-    selectInput("zorgpad_jaren", "Jaren", choices = years, selected = years, multiple = TRUE)
+    sliderInput(
+      "zorgpad_jaren", "Jaren",
+      min = min(years), max = max(years), value = c(min(years), max(years)),
+      step = 1, sep = ""
+    )
   })
 
   zorgpad_data <- reactive({
@@ -431,28 +410,7 @@ server <- function(input, output, session) {
     c4c_zorgpad_data(
       OUTCOMES_DATA,
       names = input$zorgpad_groepen,
-      years = as.integer(input$zorgpad_jaren)
-    )
-  })
-
-  output$zorgpad_kpis <- renderUI({
-    kpi <- c4c_kpi_zorgpad(OUTCOMES_DATA, LATEST_YEAR)
-    tags$div(
-      style = "display:flex; flex-wrap:wrap; margin: 0 -6px 10px;",
-      kpi_box(
-        fmt_n(kpi$eerste_event_totaal_n),
-        paste0("Eerste hartinfarct/beroerte in ", LATEST_YEAR)
-      ),
-      kpi_box(
-        fmt_n(kpi$eerste_event_zonder_medicatie_n),
-        "...zonder eerdere medicatie",
-        accent = ahti_branding$colors$fris_rood
-      ),
-      kpi_box(
-        fmt_pct(kpi$eerste_event_zonder_medicatie_pct),
-        "Aandeel zonder eerdere medicatie",
-        accent = ahti_branding$colors$fris_rood
-      )
+      years = seq(input$zorgpad_jaren[1], input$zorgpad_jaren[2])
     )
   })
 
@@ -478,6 +436,8 @@ server <- function(input, output, session) {
       theme(legend.position = "bottom", axis.text.x = element_text(angle = 30, hjust = 1))
     if (show_pct) {
       p <- p + scale_y_continuous(labels = scales::percent)
+    } else {
+      p <- p + scale_y_continuous(labels = VALUE_AXIS_LABELS)
     }
     p
   })
@@ -490,7 +450,7 @@ server <- function(input, output, session) {
       dplyr::transmute(
         Jaar = .data$year,
         Groep = as.character(.data$groep_label),
-        Aantal = round(.data$waarde)
+        Aantal = fmt_num(.data$waarde, digits = 0)
       )
   })
 
@@ -552,7 +512,11 @@ server <- function(input, output, session) {
   output$achtergrond_jaren_ui <- renderUI({
     years <- sort(unique(achtergrond_unfiltered_data()$year))
     shiny::validate(shiny::need(length(years) > 0, "Geen jaren beschikbaar voor deze selectie."))
-    selectInput("achtergrond_jaren", "Jaren", choices = years, selected = years, multiple = TRUE)
+    sliderInput(
+      "achtergrond_jaren", "Jaren",
+      min = min(years), max = max(years), value = c(min(years), max(years)),
+      step = 1, sep = ""
+    )
   })
 
   output$achtergrond_groepen_ui <- renderUI({
@@ -571,7 +535,7 @@ server <- function(input, output, session) {
     df <- dplyr::filter(achtergrond_unfiltered_data(), .data$groep %in% input$achtergrond_groepen)
     if (isTRUE(input$achtergrond_trend)) {
       shiny::req(input$achtergrond_jaren)
-      df <- dplyr::filter(df, .data$year %in% as.integer(input$achtergrond_jaren))
+      df <- dplyr::filter(df, .data$year >= input$achtergrond_jaren[1], .data$year <= input$achtergrond_jaren[2])
     }
     df
   })
@@ -595,6 +559,8 @@ server <- function(input, output, session) {
         geom_line(linewidth = 1) +
         geom_point(size = 2) +
         scale_color_manual(values = c4c_palette(n_groups, ahti_branding$scale_discrete)) +
+        scale_x_continuous(breaks = YEAR_AXIS_BREAKS, labels = YEAR_AXIS_LABELS) +
+        scale_y_continuous(labels = VALUE_AXIS_LABELS) +
         labs(title = achtergrond_title(), x = "Jaar", y = y_lab, color = NULL) +
         theme_minimal() +
         theme(legend.position = "bottom")
@@ -606,6 +572,7 @@ server <- function(input, output, session) {
       ))
       ggplot(df, aes(x = groep_label, y = waarde)) +
         geom_col(fill = ahti_branding$colors$helder_blauw) +
+        scale_y_continuous(labels = VALUE_AXIS_LABELS) +
         labs(title = achtergrond_title(), x = NULL, y = y_lab) +
         theme_minimal() +
         theme(axis.text.x = element_text(angle = 30, hjust = 1))
@@ -620,7 +587,7 @@ server <- function(input, output, session) {
       dplyr::transmute(
         Jaar = .data$year,
         Groep = as.character(.data$groep_label),
-        Waarde = round(.data$waarde, 2)
+        Waarde = fmt_num(.data$waarde)
       )
   })
 
@@ -723,6 +690,7 @@ server <- function(input, output, session) {
     ggplot(df, aes(x = stats::reorder(groep_label, waarde), y = waarde)) +
       geom_col(fill = ahti_branding$colors$helder_blauw) +
       coord_flip() +
+      scale_y_continuous(labels = VALUE_AXIS_LABELS) +
       labs(title = gebied_title(), x = NULL, y = c4c_metric_axis_label(input$gebied_metric)) +
       theme_minimal()
   })
@@ -732,7 +700,7 @@ server <- function(input, output, session) {
     shiny::req(nrow(df) > 0)
     df %>%
       dplyr::arrange(dplyr::desc(.data$waarde)) %>%
-      dplyr::transmute(Gebied = as.character(.data$groep_label), Waarde = round(.data$waarde, 2))
+      dplyr::transmute(Gebied = as.character(.data$groep_label), Waarde = fmt_num(.data$waarde))
   })
 
   gebied_map_data <- reactive({
@@ -751,7 +719,8 @@ server <- function(input, output, session) {
       coord_equal() +
       scale_fill_gradient(
         low = "#FBEAE9", high = ahti_branding$colors$fris_rood,
-        name = c4c_metric_axis_label(input$gebied_metric)
+        name = c4c_metric_axis_label(input$gebied_metric),
+        labels = VALUE_AXIS_LABELS
       ) +
       labs(title = gebied_title(), x = NULL, y = NULL) +
       theme_void() +
