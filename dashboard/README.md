@@ -41,14 +41,19 @@ Tabs:
   (too cluttered), hence the hover tooltip. The map's color scale
   (`scale_fill_gradient`) auto-fills its min/max *values* to the exact
   selection on screen (indicator, metric, niveau, jaar, and gebieden alike),
-  but both bounds can be typed over by hand to keep a fixed scale across
-  screenshots -- until the next change to any of those inputs resets them
-  back to that new selection's own data range. The low/high *colors*
-  themselves are also user-adjustable, via a plain HTML5 color picker for
-  each end (`color_picker_input()` — no extra package, since this deployment can't
-  reach CRAN to install one). Below the map, a table always shows both the
-  percentage *and* the absolute count for every area, regardless of which
-  metric is selected in the dropdown above.
+  rounded outward to 2 decimals (`floor_dp()`/`ceiling_dp()`) rather than to
+  whole numbers -- a rare outcome's percentage can be e.g. 0.03-0.06%, where
+  rounding to whole numbers would collapse both bounds to 0/1, values that
+  don't even occur in the data. Both bounds can still be typed over by hand
+  to keep a fixed scale across screenshots, until the next change to any of
+  those inputs resets them back to that new selection's own data range. The
+  low/high *colors* themselves are also user-adjustable: a plain HTML5 color
+  picker for each end (`color_picker_input()` — no extra package, since this
+  deployment can't reach CRAN to install one), plus 3 curated preset
+  gradients (`GEBIED_KLEUR_PRESETS`/`color_preset_buttons()`, red/blue/green)
+  to click instead of picking two colors by hand. Below the map, a table
+  always shows both the percentage *and* the absolute count for every area,
+  regardless of which metric is selected in the dropdown above.
 - **Favorites / Export history / Manage templates / Dictionary** — shared
   template tabs, see below.
 

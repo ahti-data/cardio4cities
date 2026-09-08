@@ -89,6 +89,47 @@ color_picker_input <- function(inputId, label, value = "#000000") {
   )
 }
 
+#' A row of clickable preset low/high gradient swatches for two
+#' `color_picker_input()` pickers, for a user who doesn't want to pick two
+#' colors by hand. Pure client-side: a click sets each `<input type="color">`
+#' element's own `.value` and dispatches a plain `"input"` event on it -- the
+#' same event `color_picker_input()` already listens for -- so the visible
+#' swatch and the server-side value both update, with no extra server code.
+#' @param low_input_id,high_input_id The `color_picker_input()` ids to drive.
+#' @param presets A list of `list(label=, low=, high=)` (hex colors).
+color_preset_buttons <- function(low_input_id, high_input_id, presets) {
+  tags$div(
+    style = "display: flex; gap: 8px; margin: -6px 0 12px;",
+    lapply(presets, function(p) {
+      set_and_fire <- function(id, hex) {
+        sprintf(
+          "var el = document.getElementById('%s'); el.value = '%s'; el.dispatchEvent(new Event('input', {bubbles: true}));",
+          id, hex
+        )
+      }
+      tags$button(
+        type = "button", title = p$label,
+        onclick = paste(set_and_fire(low_input_id, p$low), set_and_fire(high_input_id, p$high)),
+        style = sprintf(
+          "flex: 1; height: 28px; padding: 0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: linear-gradient(to right, %s, %s);",
+          p$low, p$high
+        )
+      )
+    })
+  )
+}
+
+#' This dashboard's 3 curated low/high color-scale presets for the "Naar
+#' gebied" map, passed to `color_preset_buttons()`. Each is a light tint of
+#' its high color paired with that color itself, kept consistent with
+#' `ahti_branding$colors` (the first, red, matches the map's own long-standing
+#' default).
+GEBIED_KLEUR_PRESETS <- list(
+  list(label = "Rood (standaard)", low = "#FBEAE9", high = ahti_branding$colors$fris_rood),
+  list(label = "Blauw", low = "#E3F4FB", high = ahti_branding$colors$helder_blauw),
+  list(label = "Groen", low = "#E3F7ED", high = ahti_branding$colors$fris_groen)
+)
+
 #' Dutch-formatted number (`.` thousands separator, `,` decimals) for a data
 #' table cell -- never scientific notation, regardless of magnitude.
 #' @param x Numeric vector.
@@ -96,6 +137,18 @@ color_picker_input <- function(inputId, label, value = "#000000") {
 fmt_num <- function(x, digits = 2) {
   format(round(x, digits), big.mark = ".", decimal.mark = ",", scientific = FALSE, trim = TRUE)
 }
+
+#' Round `x` outward (down for a lower bound, up for an upper bound) to
+#' `digits` decimal places -- unlike a plain `floor()`/`ceiling()` (which
+#' round to whole numbers), this keeps enough precision for a small-scale
+#' metric such as a rare outcome's population-wide percentage (e.g.
+#' 0.18-0.34%): `floor(0.18)`/`ceiling(0.34)` both collapse to values that
+#' don't even occur in the data (0 and 1), washing out the color scale.
+#' @param x Numeric vector.
+#' @param digits Decimal places to keep.
+floor_dp <- function(x, digits = 2) floor(x * 10^digits) / 10^digits
+#' @rdname floor_dp
+ceiling_dp <- function(x, digits = 2) ceiling(x * 10^digits) / 10^digits
 
 # Shared ggplot label formatters -- never scientific notation:
 # - VALUE_AXIS_LABELS: for a count/percentage/rate axis, with a thousands
@@ -295,7 +348,9 @@ app_ui <- fluidPage(
               numericInput("gebied_kleur_min", "Kleurschaal: minimum", value = NA),
               numericInput("gebied_kleur_max", "Kleurschaal: maximum", value = NA),
               color_picker_input("gebied_kleur_laag", "Kleurschaal: kleur bij minimum", value = "#FBEAE9"),
-              color_picker_input("gebied_kleur_hoog", "Kleurschaal: kleur bij maximum", value = ahti_branding$colors$fris_rood)
+              color_picker_input("gebied_kleur_hoog", "Kleurschaal: kleur bij maximum", value = ahti_branding$colors$fris_rood),
+              tags$label("Of kies een standaardcombinatie", class = "control-label", style = "font-weight: normal; color: #666;"),
+              color_preset_buttons("gebied_kleur_laag", "gebied_kleur_hoog", GEBIED_KLEUR_PRESETS)
             )
           )
         ),
@@ -1016,8 +1071,8 @@ server <- function(input, output, session) {
       shiny::req(nrow(df) > 0)
       waarde <- df$waarde[is.finite(df$waarde)]
       shiny::req(length(waarde) > 0)
-      updateNumericInput(session, "gebied_kleur_min", value = floor(min(waarde)))
-      updateNumericInput(session, "gebied_kleur_max", value = ceiling(max(waarde)))
+      updateNumericInput(session, "gebied_kleur_min", value = floor_dp(min(waarde)))
+      updateNumericInput(session, "gebied_kleur_max", value = ceiling_dp(max(waarde)))
     },
     ignoreInit = FALSE
   )
