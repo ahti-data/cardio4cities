@@ -82,6 +82,52 @@ c4c_geo_join_stadsdeel <- function(geo_df, outcome_df) {
   dplyr::arrange(out, .data$stadsdeel, .data$order)
 }
 
+#' Area-weighted centroid of a single closed polygon ring, via the standard
+#' shoelace-formula centroid -- used to place a name label on a choropleth
+#' map without a real map projection/`sf`. `long`/`lat` must form a closed
+#' ring (first vertex repeated as the last, as every polygon in
+#' `data/geo_*.csv` already is).
+#' @param long,lat Numeric vectors of ring vertices, in order.
+#' @return A one-row tibble with columns `long`, `lat` (centroid) and `area`
+#'   (unsigned, in square degrees -- used by [c4c_geo_label_points()] to
+#'   pick the largest piece of a multi-part polygon).
+c4c_ring_centroid <- function(long, lat) {
+  n <- length(long)
+  cross <- long[-n] * lat[-1] - long[-1] * lat[-n]
+  signed_area <- sum(cross) / 2
+  tibble::tibble(
+    long = sum((long[-n] + long[-1]) * cross) / (6 * signed_area),
+    lat = sum((lat[-n] + lat[-1]) * cross) / (6 * signed_area),
+    area = abs(signed_area)
+  )
+}
+
+#' One label point per named area, for `ggplot2::geom_text()` on a
+#' choropleth map. For an area with a single polygon piece, this is that
+#' polygon's own centroid ([c4c_ring_centroid()]); for a multi-part area
+#' (see [c4c_load_geo_wijk()]'s `part` column), it's the centroid of the
+#' *largest* piece by area, so the label lands inside the area's main body
+#' rather than at a meaningless average between disjoint pieces (e.g. a
+#' small island).
+#' @param geo_df A geo polygon tibble (e.g. [c4c_load_geo_stadsdeel()]'s or
+#'   [c4c_load_geo_wijk()]'s result), already joined to the current
+#'   selection if only a subset of areas should get a label.
+#' @param name_col Name of the area column (`"stadsdeel"` or `"wijk"`).
+#' @param part_col Name of the polygon-piece column, or `NULL` if `geo_df`
+#'   has none (e.g. [c4c_load_geo_stadsdeel()], always single-piece).
+#' @return Tibble with one row per distinct `name_col` value: that column,
+#'   `long`, `lat`.
+c4c_geo_label_points <- function(geo_df, name_col, part_col = NULL) {
+  group_cols <- c(name_col, part_col)
+  pieces <- geo_df %>%
+    dplyr::group_by(dplyr::across(dplyr::all_of(group_cols))) %>%
+    dplyr::group_modify(~c4c_ring_centroid(.x$long, .x$lat)) %>%
+    dplyr::ungroup()
+  pieces <- dplyr::arrange(pieces, dplyr::desc(.data$area))
+  pieces <- dplyr::distinct(pieces, dplyr::across(dplyr::all_of(name_col)), .keep_all = TRUE)
+  dplyr::select(pieces, dplyr::all_of(name_col), "long", "lat")
+}
+
 #' Read the wijk boundary polygons used by the "Naar gebied" tab's map view:
 #' one row per polygon vertex (`wijk`, `part`, `order`, `long`, `lat`),
 #' already simplified and in plain WGS84 lon/lat -- same

@@ -895,7 +895,7 @@ server <- function(input, output, session) {
     # map in maptool_klein). This is the standard fix for plotting raw
     # lon/lat with ggplot2 without a real map projection (coord_map()/sf).
     lat_ratio <- 1 / cos(mean(df$lat) * pi / 180)
-    ggplot(df, aes(x = long, y = lat, group = group_var, fill = waarde)) +
+    p <- ggplot(df, aes(x = long, y = lat, group = group_var, fill = waarde)) +
       geom_polygon(color = "white", linewidth = 0.3) +
       coord_fixed(ratio = lat_ratio) +
       scale_fill_gradient(
@@ -906,6 +906,17 @@ server <- function(input, output, session) {
       labs(title = gebied_title(), x = NULL, y = NULL) +
       theme_void() +
       theme(legend.position = "right")
+    # Name labels only for stadsdeel -- with only 8 areas each label has
+    # room to breathe; wijk's 110 areas would need a repel layout to avoid
+    # overlapping labels, not added here.
+    if (identical(input$gebied_niveau, "stadsdeel")) {
+      labels_df <- c4c_geo_label_points(df, "stadsdeel")
+      p <- p + geom_label(
+        data = labels_df, aes(x = long, y = lat, label = stadsdeel), inherit.aes = FALSE,
+        size = 3, fontface = "bold", color = "#1a1a1a", fill = "white", alpha = 0.75, label.size = 0
+      )
+    }
+    p
   })
 
   chart_data_downloads_server(

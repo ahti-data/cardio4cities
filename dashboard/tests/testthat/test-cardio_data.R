@@ -384,6 +384,61 @@ test_that("c4c_geo_join_wijk attaches waarde and keeps vertex order within each 
   expect_equal(nrow(out[out$wijk == "IJburg-West", ]), 3)
 })
 
+test_that("c4c_ring_centroid computes the centroid and area of a closed polygon ring", {
+  # A 2x2 square: (0,0)-(2,0)-(2,2)-(0,2)-(0,0), closed.
+  out <- c4c_ring_centroid(c(0, 2, 2, 0, 0), c(0, 0, 2, 2, 0))
+  expect_equal(out$long, 1)
+  expect_equal(out$lat, 1)
+  expect_equal(out$area, 4)
+
+  # Vertex winding order shouldn't flip the sign of the reported area.
+  out_reversed <- c4c_ring_centroid(rev(c(0, 2, 2, 0, 0)), rev(c(0, 0, 2, 2, 0)))
+  expect_equal(out_reversed$area, 4)
+})
+
+test_that("c4c_geo_label_points returns one centroid per area, single-piece", {
+  geo <- tibble::tribble(
+    ~stadsdeel, ~order, ~long, ~lat,
+    "Centrum",  0,      0,     0,
+    "Centrum",  1,      2,     0,
+    "Centrum",  2,      2,     2,
+    "Centrum",  3,      0,     2,
+    "Centrum",  4,      0,     0,
+    "Zuid",     0,      10,    10,
+    "Zuid",     1,      12,    10,
+    "Zuid",     2,      12,    12,
+    "Zuid",     3,      10,    12,
+    "Zuid",     4,      10,    10
+  )
+  out <- c4c_geo_label_points(geo, "stadsdeel")
+  expect_setequal(out$stadsdeel, c("Centrum", "Zuid"))
+  expect_equal(out$long[out$stadsdeel == "Centrum"], 1)
+  expect_equal(out$lat[out$stadsdeel == "Centrum"], 1)
+  expect_equal(out$long[out$stadsdeel == "Zuid"], 11)
+})
+
+test_that("c4c_geo_label_points picks the largest piece's centroid for a multi-part area", {
+  geo <- tibble::tribble(
+    ~wijk,   ~part, ~order, ~long, ~lat,
+    # Big square piece (area 4), centroid (1, 1).
+    "IJburg-West", 1, 0, 0, 0,
+    "IJburg-West", 1, 1, 2, 0,
+    "IJburg-West", 1, 2, 2, 2,
+    "IJburg-West", 1, 3, 0, 2,
+    "IJburg-West", 1, 4, 0, 0,
+    # Tiny, far-away square piece (area 0.01), centroid (100, 100).
+    "IJburg-West", 2, 0, 100,    100,
+    "IJburg-West", 2, 1, 100.1,  100,
+    "IJburg-West", 2, 2, 100.1,  100.1,
+    "IJburg-West", 2, 3, 100,    100.1,
+    "IJburg-West", 2, 4, 100,    100
+  )
+  out <- c4c_geo_label_points(geo, "wijk", part_col = "part")
+  expect_equal(nrow(out), 1)
+  expect_equal(out$long, 1)
+  expect_equal(out$lat, 1)
+})
+
 test_that("c4c_load_outcomes reads and types the committed CSV correctly", {
   tmp <- tempfile(fileext = ".csv")
   writeLines(c(
