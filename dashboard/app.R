@@ -24,7 +24,6 @@ source("utils/dictionary.R")
 source("data/metadata/dictionary_seed.R")
 source("utils/dictionary_admin.R")
 source("utils/tab_theme.R")
-source("utils/auth.R")
 source("utils/cardio_data.R")
 
 library(shiny)
@@ -86,7 +85,6 @@ YEAR_AXIS_LABELS <- scales::label_number(big.mark = "", accuracy = 1)
 YEAR_AXIS_BREAKS <- scales::breaks_pretty(n = 10)
 
 app_ui <- fluidPage(
-  auth_ui_head(),
   tc_tab_color_theme(ahti_branding),
   titlePanel(DASHBOARD_TITLE),
   tabsetPanel(
@@ -328,15 +326,9 @@ app_ui <- fluidPage(
   )
 )
 
-ui <- if (is_auth_enabled()) shinymanager::secure_app(app_ui) else app_ui
+ui <- app_ui
 
 server <- function(input, output, session) {
-  if (is_auth_enabled()) {
-    setup_dashboard_auth(session)
-  } else {
-    show_app_without_auth(session)
-  }
-
   tc_register_app_context(
     input,
     dashboard_title = DASHBOARD_TITLE,

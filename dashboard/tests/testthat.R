@@ -9,7 +9,6 @@ source("../utils/chart_downloads.R")
 source("../utils/dictionary.R")
 source("../utils/dictionary_admin.R")
 source("../utils/tab_theme.R")
-source("../utils/auth.R")
 source("../data/metadata/outcome_metadata.R")
 source("../utils/cardio_data.R")
 
