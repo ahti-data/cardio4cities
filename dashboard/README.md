@@ -36,7 +36,13 @@ Tabs:
   underlying-data download, and a "Download kaart (PNG)" button — which
   deliberately omits the on-screen title, since a PM pasting the image
   straight into a slide usually wants to write their own caption); deselect
-  specific areas. Stadsdeel's 8 areas get a permanent name label on the map;
+  specific areas for the bar chart -- the "Gebieden" selector itself is
+  hidden while the map is showing (it always shows every area), not just
+  for niveaus the map doesn't support; its `renderUI()` is exempted from
+  Shiny's default suspend-when-hidden (`outputOptions(...,
+  suspendWhenHidden = FALSE)`) so switching niveau while the map is up
+  doesn't leave it silently stuck on the previous niveau's area codes.
+  Stadsdeel's 8 areas get a permanent name label on the map;
   wijk's 110 and wijk_25's 25 (several with long, multi-part names) don't
   (too cluttered), hence the hover tooltip. The map's color scale
   (`scale_fill_gradient`) auto-fills its min/max *values* to the exact

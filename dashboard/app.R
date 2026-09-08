@@ -369,9 +369,9 @@ app_ui <- fluidPage(
           ),
           uiOutput("gebied_metric_ui"),
           uiOutput("gebied_jaar_ui"),
-          uiOutput("gebied_gebieden_ui"),
           conditionalPanel(
             condition = paste0("!(", GEBIED_MAP_LEVELS_JS, ") || input.gebied_weergave == 'bar'"),
+            uiOutput("gebied_gebieden_ui"),
             checkboxInput("gebied_as_bij_nul", "Y-as bij 0 laten beginnen", value = TRUE)
           ),
           conditionalPanel(
@@ -959,6 +959,13 @@ server <- function(input, output, session) {
       choices = stats::setNames(gebieden, labels), selected = gebieden, multiple = TRUE
     )
   })
+  # Hidden (not just visually collapsed) while the map is showing -- the
+  # selector matters for the bar chart, not for the map, which always shows
+  # every area. Force it to keep re-rendering even while hidden, though:
+  # Shiny's default suspendWhenHidden would otherwise leave input$gebied_gebieden
+  # stuck on a stale niveau's area codes until the user flips back to the bar
+  # chart, making the map briefly render as "no data" after a niveau switch.
+  outputOptions(output, "gebied_gebieden_ui", suspendWhenHidden = FALSE)
 
   # Single-year slice with the user's own metric/area selection applied --
   # shared by the bar chart, the map, the download and the data table.
