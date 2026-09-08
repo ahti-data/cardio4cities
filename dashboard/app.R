@@ -887,9 +887,17 @@ server <- function(input, output, session) {
     } else {
       interaction(df$wijk, df$part)
     }
+    # coord_equal() (ratio 1) would treat one degree of longitude as the
+    # same physical distance as one degree of latitude, but at Amsterdam's
+    # latitude a degree of longitude spans only ~cos(52.4 degrees) as much
+    # ground distance -- left uncorrected, the map is visibly stretched
+    # east-west compared to a properly projected map (e.g. the leaflet/sf
+    # map in maptool_klein). This is the standard fix for plotting raw
+    # lon/lat with ggplot2 without a real map projection (coord_map()/sf).
+    lat_ratio <- 1 / cos(mean(df$lat) * pi / 180)
     ggplot(df, aes(x = long, y = lat, group = group_var, fill = waarde)) +
       geom_polygon(color = "white", linewidth = 0.3) +
-      coord_equal() +
+      coord_fixed(ratio = lat_ratio) +
       scale_fill_gradient(
         low = "#FBEAE9", high = ahti_branding$colors$fris_rood,
         name = c4c_metric_axis_label(input$gebied_metric),
