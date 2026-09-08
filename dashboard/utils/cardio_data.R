@@ -26,6 +26,10 @@ C4C_GEO_STADSDEEL_FILE <- file.path("data", "geo_stadsdeel.csv")
 #' [c4c_load_geo_wijk()]).
 C4C_GEO_WIJK_FILE <- file.path("data", "geo_wijk.csv")
 
+#' Default path to the committed wijk_25 (gebied) boundary polygons (see
+#' [c4c_load_geo_wijk25()]).
+C4C_GEO_WIJK25_FILE <- file.path("data", "geo_wijk25.csv")
+
 #' Read and type the outcomes export.
 #' @param path Path to the CSV (see [C4C_OUTCOMES_FILE]).
 #' @return A tibble with columns `breakdown`, `groep`, `year`, `n_totaal`,
@@ -233,6 +237,46 @@ c4c_load_geo_wijk <- function(path = C4C_GEO_WIJK_FILE) {
 c4c_geo_join_wijk <- function(geo_df, outcome_df) {
   out <- dplyr::left_join(geo_df, outcome_df, by = c("wijk" = "groep"))
   dplyr::arrange(out, .data$wijk, .data$part, .data$order)
+}
+
+#' Read the wijk_25 (gebied/buurtcombinatie) boundary polygons used by the
+#' "Naar gebied" tab's map view: one row per polygon vertex (`wijk_25`,
+#' `part`, `order`, `long`, `lat`) -- same shape as [c4c_load_geo_wijk()],
+#' for the same reason (no `sf`/GDAL dependency).
+#'
+#' Unlike stadsdeel/wijk, this dashboard has no independent open source of
+#' wijk_25 boundaries: they're built by *dissolving* (unioning) the CBS
+#' wijk-level polygons that share a `Wijk25` value in a supplied wijk/wijk_25/
+#' stadsdeel crosswalk (`INDELING_WIJK_AMS_032026.csv`, not part of the
+#' pipeline's own export), one dissolve per of the 25 named gebieden --
+#' guaranteed internally consistent with this bundle's own wijk_25 grouping
+#' since the crosswalk is the same source the pipeline itself derives
+#' `wijk_25` from. None of the 25 gebieden happened to dissolve into more
+#' than one polygon piece, but `part` is kept for shape consistency with
+#' [c4c_load_geo_wijk()] and in case a future rebuild ever does produce one.
+#' @param path Path to the CSV (see [C4C_GEO_WIJK25_FILE]).
+#' @return A tibble with columns `wijk_25`, `part`, `order`, `long`, `lat`.
+c4c_load_geo_wijk25 <- function(path = C4C_GEO_WIJK25_FILE) {
+  df <- utils::read.csv(path, stringsAsFactors = FALSE)
+  df$part <- as.integer(df$part)
+  df$order <- as.integer(df$order)
+  df$long <- as.numeric(df$long)
+  df$lat <- as.numeric(df$lat)
+  tibble::as_tibble(df)
+}
+
+#' Join wijk_25 boundary polygons to one outcome/year/metric slice, for a
+#' choropleth map -- see [c4c_geo_join_wijk()] (same shape/left-join
+#' behavior).
+#' @param geo_df Result of [c4c_load_geo_wijk25()].
+#' @param outcome_df A single (year, metric) slice with `groep` (raw wijk_25
+#'   name) and `waarde` columns, e.g. [c4c_add_metric()]'s output filtered
+#'   to one year for `breakdown_id` `"wijk_25"`.
+#' @return Tibble of polygon vertices with the matching `waarde` attached
+#'   (`NA` where there was no matching outcome row), ordered for plotting.
+c4c_geo_join_wijk25 <- function(geo_df, outcome_df) {
+  out <- dplyr::left_join(geo_df, outcome_df, by = c("wijk_25" = "groep"))
+  dplyr::arrange(out, .data$wijk_25, .data$part, .data$order)
 }
 
 #' Whether an outcome's raw name is binary (`heeft_...`, exported only as a

@@ -425,6 +425,47 @@ test_that("c4c_geo_join_wijk keeps a wijk with a polygon but no outcome row, waa
   expect_true(all(is.na(out$waarde[out$wijk == "Zuidas"])))
 })
 
+test_that("c4c_load_geo_wijk25 reads and types the committed polygon CSV, including part", {
+  tmp <- tempfile(fileext = ".csv")
+  writeLines(c(
+    "wijk_25,part,order,long,lat",
+    "Centrum-West,1,0,4.88,52.37",
+    "Centrum-West,1,1,4.89,52.37",
+    "Centrum-Oost,1,0,4.90,52.37"
+  ), tmp)
+  on.exit(unlink(tmp))
+
+  out <- c4c_load_geo_wijk25(tmp)
+  expect_true(is.integer(out$part))
+  expect_true(is.integer(out$order))
+  expect_true(is.numeric(out$long))
+  expect_true(is.numeric(out$lat))
+  expect_equal(nrow(out), 3)
+})
+
+test_that("c4c_geo_join_wijk25 attaches waarde, keeps vertex order, and keeps an area with no outcome row as NA", {
+  geo <- tibble::tribble(
+    ~wijk_25,       ~part, ~order, ~long, ~lat,
+    "Centrum-West", 1,     1,      4.91,  52.38,
+    "Centrum-West", 1,     0,      4.90,  52.37,
+    "Osdorp",       1,     0,      4.80,  52.36,
+    "Centrum-West", 1,     2,      4.91,  52.37
+  )
+  outcome <- tibble::tribble(
+    ~groep,         ~waarde,
+    "Centrum-West", 12.5
+    # Osdorp suppressed this year -- no row at all.
+  )
+
+  out <- c4c_geo_join_wijk25(geo, outcome)
+
+  expect_setequal(unique(out$wijk_25), c("Centrum-West", "Osdorp"))
+  cw <- out[out$wijk_25 == "Centrum-West", ]
+  expect_equal(cw$order, c(0, 1, 2))
+  expect_equal(cw$waarde, c(12.5, 12.5, 12.5))
+  expect_true(all(is.na(out$waarde[out$wijk_25 == "Osdorp"])))
+})
+
 test_that("c4c_ring_centroid computes the centroid and area of a closed polygon ring", {
   # A 2x2 square: (0,0)-(2,0)-(2,2)-(0,2)-(0,0), closed.
   out <- c4c_ring_centroid(c(0, 2, 2, 0, 0), c(0, 0, 2, 2, 0))

@@ -21,6 +21,22 @@ test_that("dictionary_path honors SHINY_DICTIONARY_PATH and defaults to state/di
   expect_equal(dictionary_path(), file.path("state", "dictionary.json"))
 })
 
+test_that("dictionary_write collapses duplicate (raw_key, scope) rows, keeping the last one", {
+  with_dictionary_path({
+    dictionary_write(list(
+      list(raw_key = "Centrum", scope = "stadsdeel", pretty_label = "Centrum (old)"),
+      list(raw_key = "West", scope = "stadsdeel", pretty_label = "West"),
+      list(raw_key = "Centrum", scope = "stadsdeel", pretty_label = "Centrum (new)")
+    ))
+    entries <- dictionary_list()
+    expect_equal(length(entries), 2)
+    keys <- vapply(entries, dictionary_entry_key, character(1))
+    expect_equal(length(unique(keys)), 2)
+    centrum <- entries[[which(vapply(entries, function(e) e$raw_key, character(1)) == "Centrum")]]
+    expect_equal(centrum$pretty_label, "Centrum (new)")
+  })
+})
+
 with_seed_entries <- function(seed_fn, code) {
   old <- dictionary_seed_entries
   dictionary_seed_entries <<- seed_fn

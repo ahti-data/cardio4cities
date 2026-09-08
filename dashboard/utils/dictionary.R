@@ -127,7 +127,25 @@ dictionary_fill_missing_seed <- function(entries) {
   })
 }
 
+#' Persist the dictionary, defensively collapsing any duplicate
+#' `(raw_key, scope)` rows down to the last one first. Every caller
+#' ([dictionary_set_entry()], [dictionary_remove_entry()],
+#' [dictionary_fill_missing_seed()]) already does its own find-or-append
+#' logic before calling this, so this is a last-resort safety net, not the
+#' primary de-duplication path -- but without it, a duplicate that *does*
+#' slip through (observed in practice: a live multi-output Shiny session
+#' repeatedly calling [dictionary_fill_missing_seed()] before its own prior
+#' write's mtime bump was visible to every reactive's cache check, each one
+#' re-detecting the same seed rows as "missing" and re-appending them) has
+#' nothing stopping it from being written back to disk and accumulating
+#' indefinitely -- every dictionary_lookup() scan (called once per bar/
+#' category value on every chart render) gets slower in direct proportion
+#' to the file's size, which is exactly the kind of slow-down a user
+#' experiences as "the chart/map takes forever to (re)load".
+#' @param entries List of `list(raw_key, scope, pretty_label, ...)` entries.
 dictionary_write <- function(entries) {
+  keys <- vapply(entries, dictionary_entry_key, character(1))
+  entries <- entries[!duplicated(keys, fromLast = TRUE)]
   tc_json_list_write(entries, dictionary_path())
 }
 

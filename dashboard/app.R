@@ -43,10 +43,11 @@ OUTCOMES_SOURCE_MTIME <- tc_format_source_mtime(C4C_OUTCOMES_FILE)
 
 GEO_STADSDEEL <- c4c_load_geo_stadsdeel()
 GEO_WIJK <- c4c_load_geo_wijk()
+GEO_WIJK25 <- c4c_load_geo_wijk25()
 
 # "Naar gebied" niveaus that offer a choropleth map, in addition to the bar
 # chart every geografisch niveau always gets -- see gebied_map_data().
-GEBIED_MAP_LEVELS <- c("stadsdeel", "wijk")
+GEBIED_MAP_LEVELS <- c("stadsdeel", "wijk", "wijk_25")
 GEBIED_MAP_LEVELS_JS <- paste(
   sprintf("input.gebied_niveau == '%s'", GEBIED_MAP_LEVELS), collapse = " || "
 )
@@ -289,7 +290,22 @@ app_ui <- fluidPage(
                 "gebied_map", height = "620px",
                 hover = hoverOpts("gebied_map_hover", delay = 60, delayType = "debounce", nullOutside = TRUE)
               ),
-              uiOutput("gebied_map_tooltip")
+              uiOutput("gebied_map_tooltip"),
+              # Shiny's own shiny-busy/shiny-idle classes on <html> (no
+              # extra package) -- without this, a (re)computing map is just
+              # blank/stale for a moment with no feedback, easily mistaken
+              # for hovering "not working".
+              conditionalPanel(
+                condition = "$('html').hasClass('shiny-busy')",
+                div(
+                  "Kaart wordt geladen...",
+                  style = paste0(
+                    "position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);",
+                    "background: white; border: 1px solid #D1D5DB; border-radius: 6px;",
+                    "padding: 8px 16px; font-size: 14px; color: #374151; z-index: 200;"
+                  )
+                )
+              )
             ),
             p(
               style = "font-size:12px; color:#6B7280;",
@@ -876,11 +892,11 @@ server <- function(input, output, session) {
         "."
       )
     ))
-    if (identical(input$gebied_niveau, "stadsdeel")) {
-      c4c_geo_join_stadsdeel(GEO_STADSDEEL, gebied_selected_data())
-    } else {
-      c4c_geo_join_wijk(GEO_WIJK, gebied_selected_data())
-    }
+    switch(input$gebied_niveau,
+      stadsdeel = c4c_geo_join_stadsdeel(GEO_STADSDEEL, gebied_selected_data()),
+      wijk = c4c_geo_join_wijk(GEO_WIJK, gebied_selected_data()),
+      wijk_25 = c4c_geo_join_wijk25(GEO_WIJK25, gebied_selected_data())
+    )
   })
 
   # Shared by output$gebied_map (on-screen) and gebied_map_download (PNG
@@ -891,14 +907,17 @@ server <- function(input, output, session) {
       nrow(df) > 0,
       "Onvoldoende data beschikbaar voor deze selectie (mogelijk afgeschermd vanwege CBS-geheimhoudingsregels)."
     ))
-    # Stadsdeel polygons are single-piece (group = stadsdeel); wijk polygons
-    # can have several disjoint pieces per named area (group = wijk x part;
-    # see c4c_load_geo_wijk()) -- either way ggplot draws one shape per
-    # group and fills it by the shared waarde for that name.
+    # Stadsdeel polygons are single-piece (group = stadsdeel); wijk/wijk_25
+    # polygons can have several disjoint pieces per named area (group = name
+    # x part; see c4c_load_geo_wijk()/c4c_load_geo_wijk25()) -- either way
+    # ggplot draws one shape per group and fills it by the shared waarde for
+    # that name.
     group_var <- if (identical(input$gebied_niveau, "stadsdeel")) {
       df$stadsdeel
-    } else {
+    } else if (identical(input$gebied_niveau, "wijk")) {
       interaction(df$wijk, df$part)
+    } else {
+      interaction(df$wijk_25, df$part)
     }
     # coord_equal() (ratio 1) would treat one degree of longitude as the
     # same physical distance as one degree of latitude, but at Amsterdam's
@@ -926,9 +945,10 @@ server <- function(input, output, session) {
       theme_void() +
       theme(legend.position = "right")
     # Name labels only for stadsdeel -- with only 8 areas each label has
-    # room to breathe; wijk's 110 areas would need a repel layout to avoid
-    # overlapping labels, so it gets a hover tooltip instead (see
-    # gebied_map_hover_info()/output$gebied_map_tooltip below).
+    # room to breathe; wijk's 110 (and wijk_25's 25, several with long
+    # multi-part names like "De Aker, Sloten, Nieuw-Sloten") would need a
+    # repel layout to avoid overlapping labels, so both get a hover tooltip
+    # instead (see gebied_map_hover_info()/output$gebied_map_tooltip below).
     if (identical(input$gebied_niveau, "stadsdeel")) {
       labels_df <- c4c_geo_label_points(df, "stadsdeel")
       p <- p + geom_label(
@@ -953,11 +973,11 @@ server <- function(input, output, session) {
     hover <- input$gebied_map_hover
     shiny::req(hover)
     df <- gebied_map_data()
-    if (identical(input$gebied_niveau, "stadsdeel")) {
-      c4c_area_at_point(df, hover$x, hover$y, "stadsdeel")
-    } else {
-      c4c_area_at_point(df, hover$x, hover$y, "wijk", part_col = "part")
-    }
+    switch(input$gebied_niveau,
+      stadsdeel = c4c_area_at_point(df, hover$x, hover$y, "stadsdeel"),
+      wijk = c4c_area_at_point(df, hover$x, hover$y, "wijk", part_col = "part"),
+      wijk_25 = c4c_area_at_point(df, hover$x, hover$y, "wijk_25", part_col = "part")
+    )
   })
 
   output$gebied_map_tooltip <- renderUI({

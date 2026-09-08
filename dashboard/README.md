@@ -31,11 +31,12 @@ Tabs:
   either for one year or as a trend over a slider-selected year range;
   deselect specific groups.
 - **Naar gebied** — any outcome ranked by stadsdeel, gebied (wijk_25) or wijk
-  (CBS's own 110-area 2023 wijkindeling) for one chosen year (stadsdeel and
-  wijk also as a choropleth map, with the area name and value on hover, an
+  (CBS's own 110-area 2023 wijkindeling) for one chosen year (all three also
+  as a choropleth map, with the area name and value on hover, an
   underlying-data download, and a "Download kaart (PNG)" button); deselect
   specific areas. Stadsdeel's 8 areas get a permanent name label on the map;
-  wijk's 110 don't (too cluttered), hence the hover tooltip.
+  wijk's 110 and wijk_25's 25 (several with long, multi-part names) don't
+  (too cluttered), hence the hover tooltip.
 - **Favorites / Export history / Manage templates / Dictionary** — shared
   template tabs, see below.
 
@@ -56,7 +57,12 @@ own `output.xlsx` export. "wijk" is the pipeline's own raw `wc2023` CBS
 register code, crosswalked to a name using an external CBS wijk-boundary
 file (`data/geo_wijk.csv`, not part of the pipeline's own export — see
 `c4c_load_geo_wijk()`); "buurt" still has no such crosswalk in this bundle
-and is intentionally left out.
+and is intentionally left out. `data/geo_wijk25.csv` (wijk_25's map
+boundaries) is *derived*, not sourced directly: this dashboard has no
+independent open boundary file for the 25 gebieden, so its 25 polygons are
+built by dissolving (unioning) the same wijk-level boundaries by their
+shared `Wijk25` value in the supplied wijk/wijk_25/stadsdeel crosswalk —
+see `c4c_load_geo_wijk25()`'s header comment in `utils/cardio_data.R`.
 
 ---
 
