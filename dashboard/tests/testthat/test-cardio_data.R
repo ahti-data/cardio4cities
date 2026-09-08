@@ -325,8 +325,9 @@ test_that("c4c_geo_join_stadsdeel attaches waarde and keeps polygon vertex order
 
   out <- c4c_geo_join_stadsdeel(geo, outcome)
 
-  # Weesp has no polygon, so it's dropped (inner join); Zuid has no waarde
-  # issue but is present in both -- both should survive.
+  # Weesp has no polygon at all, so it's dropped regardless of join type
+  # (it isn't a row in geo_df to begin with); Centrum and Zuid both have a
+  # polygon and a matching outcome row, so both survive.
   expect_setequal(unique(out$stadsdeel), c("Centrum", "Zuid"))
 
   # Vertex order within each stadsdeel must be restored (0, 1, 2), even
@@ -334,6 +335,27 @@ test_that("c4c_geo_join_stadsdeel attaches waarde and keeps polygon vertex order
   centrum <- out[out$stadsdeel == "Centrum", ]
   expect_equal(centrum$order, c(0, 1, 2))
   expect_equal(centrum$waarde, c(12.5, 12.5, 12.5))
+})
+
+test_that("c4c_geo_join_stadsdeel keeps an area with a polygon but no outcome row, waarde NA", {
+  geo <- tibble::tribble(
+    ~stadsdeel, ~order, ~long, ~lat,
+    "Centrum",  0,      4.90,  52.37,
+    "Centrum",  1,      4.91,  52.37,
+    "Zuid",     0,      4.88,  52.35
+  )
+  # Zuid is suppressed this year -- no row in outcome_df at all.
+  outcome <- tibble::tribble(
+    ~groep,    ~waarde,
+    "Centrum", 12.5
+  )
+
+  out <- c4c_geo_join_stadsdeel(geo, outcome)
+
+  # Both areas still appear (Zuid has a shape, even without a value).
+  expect_setequal(unique(out$stadsdeel), c("Centrum", "Zuid"))
+  expect_true(all(is.na(out$waarde[out$stadsdeel == "Zuid"])))
+  expect_equal(out$waarde[out$stadsdeel == "Centrum"], c(12.5, 12.5))
 })
 
 test_that("c4c_load_geo_wijk reads and types the committed polygon CSV, including part", {
@@ -372,7 +394,7 @@ test_that("c4c_geo_join_wijk attaches waarde and keeps vertex order within each 
 
   out <- c4c_geo_join_wijk(geo, outcome)
 
-  # Onbekend has no polygon, so it's dropped (inner join).
+  # Onbekend has no polygon at all, so it's dropped.
   expect_setequal(unique(out$wijk), c("IJburg-West", "Jordaan"))
 
   # Vertex order within each (wijk, part) piece is restored.
@@ -382,6 +404,25 @@ test_that("c4c_geo_join_wijk attaches waarde and keeps vertex order within each 
 
   # Both pieces of the multi-part wijk survive the join, distinctly.
   expect_equal(nrow(out[out$wijk == "IJburg-West", ]), 3)
+})
+
+test_that("c4c_geo_join_wijk keeps a wijk with a polygon but no outcome row, waarde NA", {
+  geo <- tibble::tribble(
+    ~wijk,     ~part, ~order, ~long, ~lat,
+    "Jordaan", 1,     0,      4.88,  52.37,
+    "Jordaan", 1,     1,      4.89,  52.37,
+    "Zuidas",  1,     0,      4.89,  52.34
+  )
+  # Zuidas is suppressed this year -- no row in outcome_df at all.
+  outcome <- tibble::tribble(
+    ~groep,    ~waarde,
+    "Jordaan", 8.0
+  )
+
+  out <- c4c_geo_join_wijk(geo, outcome)
+
+  expect_setequal(unique(out$wijk), c("Jordaan", "Zuidas"))
+  expect_true(all(is.na(out$waarde[out$wijk == "Zuidas"])))
 })
 
 test_that("c4c_ring_centroid computes the centroid and area of a closed polygon ring", {

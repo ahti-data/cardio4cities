@@ -68,17 +68,22 @@ c4c_load_geo_stadsdeel <- function(path = C4C_GEO_STADSDEEL_FILE) {
 #' Join stadsdeel boundary polygons to one outcome/year/metric slice, for a
 #' choropleth map. Preserves each polygon's vertex order (required for
 #' `ggplot2::geom_polygon()` to draw a correct shape, and not guaranteed by
-#' a join). Areas with no boundary (see [c4c_load_geo_stadsdeel()]) are
-#' silently dropped -- an inner join, since a map can only show what it has
-#' a shape for.
+#' a join). A left join *from the geometry*: an area with no boundary at all
+#' (see [c4c_load_geo_stadsdeel()]) is silently dropped, since a map can
+#' only show what it has a shape for -- but an area that *does* have a
+#' boundary and simply has no matching row in `outcome_df` (e.g. suppressed
+#' that year under CBS's output rules) still comes through, with `waarde`
+#' `NA`, so the caller can render it distinctly (e.g. grey, via
+#' `scale_fill_gradient(na.value = ...)`) instead of it silently vanishing
+#' into the plot background.
 #' @param geo_df Result of [c4c_load_geo_stadsdeel()].
 #' @param outcome_df A single (year, metric) slice with `groep` (raw
 #'   stadsdeel name) and `waarde` columns, e.g. [c4c_add_metric()]'s output
 #'   filtered to one year for `breakdown_id` `"stadsdeel"`.
-#' @return Tibble of polygon vertices with the matching `waarde` attached,
-#'   ordered for plotting.
+#' @return Tibble of polygon vertices with the matching `waarde` attached
+#'   (`NA` where there was no matching outcome row), ordered for plotting.
 c4c_geo_join_stadsdeel <- function(geo_df, outcome_df) {
-  out <- dplyr::inner_join(geo_df, outcome_df, by = c("stadsdeel" = "groep"))
+  out <- dplyr::left_join(geo_df, outcome_df, by = c("stadsdeel" = "groep"))
   dplyr::arrange(out, .data$stadsdeel, .data$order)
 }
 
@@ -158,19 +163,21 @@ c4c_load_geo_wijk <- function(path = C4C_GEO_WIJK_FILE) {
 }
 
 #' Join wijk boundary polygons to one outcome/year/metric slice, for a
-#' choropleth map -- see [c4c_geo_join_stadsdeel()] (same shape, one more
-#' grouping column). Preserves vertex order within each polygon piece,
-#' required for `ggplot2::geom_polygon()`. An inner join: a wijk with no
-#' boundary (e.g. `"Onbekend"`) is silently dropped from the map, but still
-#' appears normally in the "Naar gebied" bar chart.
+#' choropleth map -- see [c4c_geo_join_stadsdeel()] (same shape/left-join
+#' behavior, one more grouping column). Preserves vertex order within each
+#' polygon piece, required for `ggplot2::geom_polygon()`. A wijk with no
+#' boundary at all (e.g. `"Onbekend"`) is silently dropped from the map (it
+#' still appears normally in the "Naar gebied" bar chart); a wijk that does
+#' have a boundary but no matching outcome row (suppressed that year) comes
+#' through with `waarde` `NA` instead of vanishing.
 #' @param geo_df Result of [c4c_load_geo_wijk()].
 #' @param outcome_df A single (year, metric) slice with `groep` (raw wijk
 #'   name) and `waarde` columns, e.g. [c4c_add_metric()]'s output filtered
 #'   to one year for `breakdown_id` `"wijk"`.
-#' @return Tibble of polygon vertices with the matching `waarde` attached,
-#'   ordered for plotting.
+#' @return Tibble of polygon vertices with the matching `waarde` attached
+#'   (`NA` where there was no matching outcome row), ordered for plotting.
 c4c_geo_join_wijk <- function(geo_df, outcome_df) {
-  out <- dplyr::inner_join(geo_df, outcome_df, by = c("wijk" = "groep"))
+  out <- dplyr::left_join(geo_df, outcome_df, by = c("wijk" = "groep"))
   dplyr::arrange(out, .data$wijk, .data$part, .data$order)
 }
 

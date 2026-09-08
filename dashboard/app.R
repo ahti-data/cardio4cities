@@ -901,7 +901,13 @@ server <- function(input, output, session) {
       scale_fill_gradient(
         low = "#FBEAE9", high = ahti_branding$colors$fris_rood,
         name = c4c_metric_axis_label(input$gebied_metric),
-        labels = VALUE_AXIS_LABELS
+        labels = VALUE_AXIS_LABELS,
+        # An area with a boundary but no data that year (e.g. suppressed
+        # under CBS's output rules -- see c4c_geo_join_stadsdeel()/
+        # c4c_geo_join_wijk()) gets waarde = NA; grey it out explicitly
+        # instead of leaving it unfilled (which would blend into the
+        # white plot background and look like a rendering gap).
+        na.value = "grey80"
       ) +
       labs(title = gebied_title(), x = NULL, y = NULL) +
       theme_void() +
