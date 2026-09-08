@@ -32,7 +32,10 @@ Tabs:
   deselect specific groups.
 - **Naar gebied** — any outcome ranked by stadsdeel, gebied (wijk_25) or wijk
   (CBS's own 110-area 2023 wijkindeling) for one chosen year (stadsdeel and
-  wijk also as a choropleth map); deselect specific areas.
+  wijk also as a choropleth map, with the area name and value on hover, an
+  underlying-data download, and a "Download kaart (PNG)" button); deselect
+  specific areas. Stadsdeel's 8 areas get a permanent name label on the map;
+  wijk's 110 don't (too cluttered), hence the hover tooltip.
 - **Favorites / Export history / Manage templates / Dictionary** — shared
   template tabs, see below.
 

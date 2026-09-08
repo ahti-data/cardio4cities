@@ -133,6 +133,60 @@ c4c_geo_label_points <- function(geo_df, name_col, part_col = NULL) {
   dplyr::select(pieces, dplyr::all_of(name_col), "long", "lat")
 }
 
+#' Ray-casting point-in-polygon test: is point `(px, py)` inside a closed
+#' polygon ring? Used to power the choropleth maps' hover tooltip (see
+#' [c4c_area_at_point()]) without adding a spatial-index dependency -- these
+#' maps are deliberately plain `ggplot2::geom_polygon()` data, not `sf`.
+#' @param px,py Numeric scalars, the query point.
+#' @param ring_long,ring_lat Numeric vectors, the ring's vertices in order
+#'   (closed: first vertex repeated as the last, as every polygon in
+#'   `data/geo_*.csv` already is).
+#' @return `TRUE`/`FALSE`.
+c4c_point_in_ring <- function(px, py, ring_long, ring_lat) {
+  n <- length(ring_long)
+  inside <- FALSE
+  j <- n
+  for (i in seq_len(n)) {
+    yi <- ring_lat[i]
+    yj <- ring_lat[j]
+    if ((yi > py) != (yj > py)) {
+      x_intersect <- (ring_long[j] - ring_long[i]) * (py - yi) / (yj - yi) + ring_long[i]
+      if (px < x_intersect) inside <- !inside
+    }
+    j <- i
+  }
+  inside
+}
+
+#' Which named area (if any) a hover point falls inside, for a choropleth
+#' map's hover tooltip. A plain linear scan over every polygon piece (a
+#' handful for stadsdeel, ~115 for wijk) with [c4c_point_in_ring()] -- fast
+#' enough for a debounced mouse-hover event, and avoids a real spatial
+#' index/`sf` dependency for what's otherwise a dependency-free map.
+#' @param geo_df A joined geo polygon tibble (e.g. [c4c_geo_join_stadsdeel()]'s
+#'   or [c4c_geo_join_wijk()]'s result), with a `waarde` column.
+#' @param px,py The hover point, in the same lon/lat units as `geo_df`.
+#' @param name_col Name of the area column (`"stadsdeel"` or `"wijk"`).
+#' @param part_col Name of the polygon-piece column, or `NULL` if `geo_df`
+#'   has none (e.g. [c4c_load_geo_stadsdeel()]'s result).
+#' @return A one-row tibble (`name`, `waarde`), or `NULL` if the point isn't
+#'   inside any polygon piece.
+c4c_area_at_point <- function(geo_df, px, py, name_col, part_col = NULL) {
+  group_key <- if (is.null(part_col)) {
+    geo_df[[name_col]]
+  } else {
+    paste(geo_df[[name_col]], geo_df[[part_col]], sep = "\r")
+  }
+  for (key in unique(group_key)) {
+    idx <- group_key == key
+    if (sum(idx) < 3) next
+    if (c4c_point_in_ring(px, py, geo_df$long[idx], geo_df$lat[idx])) {
+      return(tibble::tibble(name = geo_df[[name_col]][idx][1], waarde = geo_df$waarde[idx][1]))
+    }
+  }
+  NULL
+}
+
 #' Read the wijk boundary polygons used by the "Naar gebied" tab's map view:
 #' one row per polygon vertex (`wijk`, `part`, `order`, `long`, `lat`),
 #' already simplified and in plain WGS84 lon/lat -- same

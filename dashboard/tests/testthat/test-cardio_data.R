@@ -480,6 +480,61 @@ test_that("c4c_geo_label_points picks the largest piece's centroid for a multi-p
   expect_equal(out$lat, 1)
 })
 
+test_that("c4c_point_in_ring detects points inside, outside, and on the edge of a square", {
+  # Closed 2x2 square: (0,0)-(2,0)-(2,2)-(0,2)-(0,0).
+  ring_long <- c(0, 2, 2, 0, 0)
+  ring_lat <- c(0, 0, 2, 2, 0)
+
+  expect_true(c4c_point_in_ring(1, 1, ring_long, ring_lat))
+  expect_false(c4c_point_in_ring(5, 5, ring_long, ring_lat))
+  expect_false(c4c_point_in_ring(-1, 1, ring_long, ring_lat))
+})
+
+test_that("c4c_area_at_point finds the matching single-piece area and returns its waarde", {
+  geo <- tibble::tribble(
+    ~stadsdeel, ~order, ~long, ~lat, ~waarde,
+    "Centrum",  0,      0,     0,    12.5,
+    "Centrum",  1,      2,     0,    12.5,
+    "Centrum",  2,      2,     2,    12.5,
+    "Centrum",  3,      0,     2,    12.5,
+    "Centrum",  4,      0,     0,    12.5,
+    "Zuid",     0,      10,    10,   8.0,
+    "Zuid",     1,      12,    10,   8.0,
+    "Zuid",     2,      12,    12,   8.0,
+    "Zuid",     3,      10,    12,   8.0,
+    "Zuid",     4,      10,    10,   8.0
+  )
+
+  hit <- c4c_area_at_point(geo, 1, 1, "stadsdeel")
+  expect_equal(hit$name, "Centrum")
+  expect_equal(hit$waarde, 12.5)
+
+  miss <- c4c_area_at_point(geo, 50, 50, "stadsdeel")
+  expect_null(miss)
+})
+
+test_that("c4c_area_at_point finds a point inside either piece of a multi-part area", {
+  geo <- tibble::tribble(
+    ~wijk,          ~part, ~order, ~long, ~lat,  ~waarde,
+    "IJburg-West",  1,     0,      0,     0,     20,
+    "IJburg-West",  1,     1,      2,     0,     20,
+    "IJburg-West",  1,     2,      2,     2,     20,
+    "IJburg-West",  1,     3,      0,     2,     20,
+    "IJburg-West",  1,     4,      0,     0,     20,
+    "IJburg-West",  2,     0,      100,   100,   20,
+    "IJburg-West",  2,     1,      101,   100,   20,
+    "IJburg-West",  2,     2,      101,   101,   20,
+    "IJburg-West",  2,     3,      100,   101,   20,
+    "IJburg-West",  2,     4,      100,   100,   20
+  )
+
+  hit_main <- c4c_area_at_point(geo, 1, 1, "wijk", part_col = "part")
+  expect_equal(hit_main$name, "IJburg-West")
+
+  hit_island <- c4c_area_at_point(geo, 100.5, 100.5, "wijk", part_col = "part")
+  expect_equal(hit_island$name, "IJburg-West")
+})
+
 test_that("c4c_load_outcomes reads and types the committed CSV correctly", {
   tmp <- tempfile(fileext = ".csv")
   writeLines(c(

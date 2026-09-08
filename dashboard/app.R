@@ -283,13 +283,23 @@ app_ui <- fluidPage(
           ),
           conditionalPanel(
             condition = paste0("(", GEBIED_MAP_LEVELS_JS, ") && input.gebied_weergave == 'map'"),
-            plotOutput("gebied_map", height = "620px"),
+            div(
+              style = "position: relative;",
+              plotOutput(
+                "gebied_map", height = "620px",
+                hover = hoverOpts("gebied_map_hover", delay = 60, delayType = "debounce", nullOutside = TRUE)
+              ),
+              uiOutput("gebied_map_tooltip")
+            ),
             p(
               style = "font-size:12px; color:#6B7280;",
               "Gebieden zonder actuele grens in de gebruikte open geodatabron (bijv. Weesp bij ",
               "Stadsdeel) en 'Onbekend' staan niet op de kaart, maar wel in het staafdiagram. ",
-              "Ga naar de staafdiagram-weergave om de onderliggende data te downloaden."
-            )
+              "Beweeg de muis over een gebied voor de naam en waarde."
+            ),
+            downloadButton("gebied_map_download", "Download kaart (PNG)"),
+            br(), br(),
+            chart_data_downloads_ui("gebied_map_downloads", chart_type = "bar")
           )
         )
       )
@@ -321,7 +331,8 @@ server <- function(input, output, session) {
       "zorgpad_incidentie_downloads"  = "^zorgpad_",
       "achtergrond_downloads_bar"     = "^achtergrond_",
       "achtergrond_downloads_trend"   = "^achtergrond_",
-      "gebied_downloads"              = "^gebied_"
+      "gebied_downloads"              = "^gebied_",
+      "gebied_map_downloads"          = "^gebied_"
     )
   )
 
@@ -872,7 +883,9 @@ server <- function(input, output, session) {
     }
   })
 
-  output$gebied_map <- renderPlot({
+  # Shared by output$gebied_map (on-screen) and gebied_map_download (PNG
+  # export) -- built once so the two can never drift apart.
+  gebied_map_plot <- reactive({
     df <- gebied_map_data()
     shiny::validate(shiny::need(
       nrow(df) > 0,
@@ -914,7 +927,8 @@ server <- function(input, output, session) {
       theme(legend.position = "right")
     # Name labels only for stadsdeel -- with only 8 areas each label has
     # room to breathe; wijk's 110 areas would need a repel layout to avoid
-    # overlapping labels, not added here.
+    # overlapping labels, so it gets a hover tooltip instead (see
+    # gebied_map_hover_info()/output$gebied_map_tooltip below).
     if (identical(input$gebied_niveau, "stadsdeel")) {
       labels_df <- c4c_geo_label_points(df, "stadsdeel")
       p <- p + geom_label(
@@ -925,6 +939,54 @@ server <- function(input, output, session) {
     p
   })
 
+  output$gebied_map <- renderPlot({
+    gebied_map_plot()
+  })
+
+  # Hover tooltip (both niveaus, but the only way to see an area's name on
+  # the map itself for wijk, which has no permanent labels): a plain
+  # point-in-polygon test (c4c_area_at_point()) against the same polygons
+  # just plotted -- no plotly/sf dependency needed. input$gebied_map_hover's
+  # $x/$y are already in the plot's data units (lon/lat), regardless of
+  # coord_fixed()'s display ratio.
+  gebied_map_hover_info <- reactive({
+    hover <- input$gebied_map_hover
+    shiny::req(hover)
+    df <- gebied_map_data()
+    if (identical(input$gebied_niveau, "stadsdeel")) {
+      c4c_area_at_point(df, hover$x, hover$y, "stadsdeel")
+    } else {
+      c4c_area_at_point(df, hover$x, hover$y, "wijk", part_col = "part")
+    }
+  })
+
+  output$gebied_map_tooltip <- renderUI({
+    hit <- gebied_map_hover_info()
+    shiny::req(hit)
+    hover <- input$gebied_map_hover
+    waarde_txt <- if (is.na(hit$waarde)) {
+      "geen data"
+    } else {
+      paste(fmt_num(hit$waarde), c4c_metric_axis_label(input$gebied_metric))
+    }
+    style <- paste0(
+      "position: absolute; z-index: 100; pointer-events: none;",
+      "left:", hover$coords_css$x + 12, "px; top:", hover$coords_css$y + 12, "px;",
+      "background: white; border: 1px solid #D1D5DB; border-radius: 4px;",
+      "padding: 4px 8px; font-size: 13px; box-shadow: 0 1px 4px rgba(0,0,0,0.2);"
+    )
+    div(style = style, strong(hit$name), br(), waarde_txt)
+  })
+
+  output$gebied_map_download <- downloadHandler(
+    filename = function() {
+      paste0("cardio4cities_naar_gebied_kaart_", input$gebied_niveau, "_", input$gebied_jaar, ".png")
+    },
+    content = function(file) {
+      ggsave(file, plot = gebied_map_plot(), width = 9, height = 7, dpi = 200, bg = "white")
+    }
+  )
+
   chart_data_downloads_server(
     id = "gebied_downloads",
     data = gebied_plot_data,
@@ -933,6 +995,26 @@ server <- function(input, output, session) {
     series_col = "reeks",
     value_col = "waarde",
     filename_prefix = "cardio4cities_naar_gebied",
+    agg_fun = NULL,
+    figure_title = gebied_title,
+    slide_title = gebied_title,
+    source_output = OUTCOMES_SOURCE_FILE,
+    source_sheet = reactive(input$gebied_niveau),
+    source_mtime = OUTCOMES_SOURCE_MTIME,
+    category_scope = reactive(input$gebied_niveau)
+  )
+
+  # Same underlying selection as "gebied_downloads" above -- just offered
+  # again here so the data is downloadable from the map view too, without
+  # switching to the bar chart first.
+  chart_data_downloads_server(
+    id = "gebied_map_downloads",
+    data = gebied_plot_data,
+    chart_type = "bar",
+    category_col = "groep_label",
+    series_col = "reeks",
+    value_col = "waarde",
+    filename_prefix = "cardio4cities_naar_gebied_kaart",
     agg_fun = NULL,
     figure_title = gebied_title,
     slide_title = gebied_title,
