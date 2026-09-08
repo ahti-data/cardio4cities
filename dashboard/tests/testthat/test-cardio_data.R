@@ -40,6 +40,8 @@ test_that("c4c_available_metrics offers the right choices per kind, default firs
   binary_metrics <- c4c_available_metrics("binary")
   expect_equal(unname(binary_metrics[1]), "percentage")
   expect_true("absolute" %in% binary_metrics)
+  # Prevalence per 1.000 is offered alongside percentage for binary outcomes.
+  expect_true("rate_per_1000" %in% binary_metrics)
 
   cont_metrics <- c4c_available_metrics("continuous")
   expect_equal(unname(cont_metrics[1]), "rate_per_1000")

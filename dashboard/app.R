@@ -267,6 +267,11 @@ app_ui <- fluidPage(
             radioButtons(
               "gebied_weergave", "Weergave",
               choices = c("Staafdiagram" = "bar", "Kaart" = "map")
+            ),
+            conditionalPanel(
+              condition = "input.gebied_weergave == 'map'",
+              numericInput("gebied_kleur_min", "Kleurschaal: minimum", value = NA),
+              numericInput("gebied_kleur_max", "Kleurschaal: maximum", value = NA)
             )
           )
         ),
@@ -313,7 +318,9 @@ app_ui <- fluidPage(
             ),
             downloadButton("gebied_map_download", "Download kaart (PNG)"),
             br(), br(),
-            chart_data_downloads_ui("gebied_map_downloads", chart_type = "bar")
+            chart_data_downloads_ui("gebied_map_downloads", chart_type = "bar"),
+            h4("Onderliggende data"),
+            tableOutput("gebied_map_table")
           )
         )
       )
@@ -399,7 +406,7 @@ server <- function(input, output, session) {
       geom_line(color = ahti_branding$colors$helder_blauw, linewidth = 1) +
       geom_point(color = ahti_branding$colors$helder_blauw, size = 2) +
       scale_x_continuous(breaks = YEAR_AXIS_BREAKS, labels = YEAR_AXIS_LABELS) +
-      scale_y_continuous(labels = VALUE_AXIS_LABELS) +
+      scale_y_continuous(labels = VALUE_AXIS_LABELS, limits = c(0, NA), expand = expansion(mult = c(0, 0.05))) +
       labs(
         title = overzicht_title(),
         x = "Jaar", y = c4c_metric_axis_label(input$overzicht_metric)
@@ -516,9 +523,9 @@ server <- function(input, output, session) {
       theme_minimal() +
       theme(legend.position = "bottom", axis.text.x = element_text(angle = 30, hjust = 1))
     if (show_pct) {
-      p <- p + scale_y_continuous(labels = scales::percent)
+      p <- p + scale_y_continuous(labels = scales::percent, limits = c(0, NA), expand = expansion(mult = c(0, 0.05)))
     } else {
-      p <- p + scale_y_continuous(labels = VALUE_AXIS_LABELS)
+      p <- p + scale_y_continuous(labels = VALUE_AXIS_LABELS, limits = c(0, NA), expand = expansion(mult = c(0, 0.05)))
     }
     p
   })
@@ -605,7 +612,7 @@ server <- function(input, output, session) {
       geom_point(size = 2) +
       scale_color_manual(values = c4c_palette(n_groups, ahti_branding$scale_discrete)) +
       scale_x_continuous(breaks = YEAR_AXIS_BREAKS, labels = YEAR_AXIS_LABELS) +
-      scale_y_continuous(labels = VALUE_AXIS_LABELS) +
+      scale_y_continuous(labels = VALUE_AXIS_LABELS, limits = c(0, NA), expand = expansion(mult = c(0, 0.05))) +
       labs(
         title = zorgpad_incidentie_title(), x = "Jaar",
         y = c4c_metric_axis_label("incidence"), color = NULL
@@ -732,7 +739,7 @@ server <- function(input, output, session) {
         geom_point(size = 2) +
         scale_color_manual(values = c4c_palette(n_groups, ahti_branding$scale_discrete)) +
         scale_x_continuous(breaks = YEAR_AXIS_BREAKS, labels = YEAR_AXIS_LABELS) +
-        scale_y_continuous(labels = VALUE_AXIS_LABELS) +
+        scale_y_continuous(labels = VALUE_AXIS_LABELS, limits = c(0, NA), expand = expansion(mult = c(0, 0.05))) +
         labs(title = achtergrond_title(), x = "Jaar", y = y_lab, color = NULL) +
         theme_minimal() +
         theme(legend.position = "bottom")
@@ -744,7 +751,7 @@ server <- function(input, output, session) {
       ))
       ggplot(df, aes(x = groep_label, y = waarde)) +
         geom_col(fill = ahti_branding$colors$helder_blauw) +
-        scale_y_continuous(labels = VALUE_AXIS_LABELS) +
+        scale_y_continuous(labels = VALUE_AXIS_LABELS, limits = c(0, NA), expand = expansion(mult = c(0, 0.05))) +
         labs(title = achtergrond_title(), x = NULL, y = y_lab) +
         theme_minimal() +
         theme(axis.text.x = element_text(angle = 30, hjust = 1))
@@ -862,7 +869,7 @@ server <- function(input, output, session) {
     ggplot(df, aes(x = stats::reorder(groep_label, waarde), y = waarde)) +
       geom_col(fill = ahti_branding$colors$helder_blauw) +
       coord_flip() +
-      scale_y_continuous(labels = VALUE_AXIS_LABELS) +
+      scale_y_continuous(labels = VALUE_AXIS_LABELS, limits = c(0, NA), expand = expansion(mult = c(0, 0.05))) +
       labs(title = gebied_title(), x = NULL, y = c4c_metric_axis_label(input$gebied_metric)) +
       theme_minimal()
   })
@@ -919,6 +926,10 @@ server <- function(input, output, session) {
     # map in maptool_klein). This is the standard fix for plotting raw
     # lon/lat with ggplot2 without a real map projection (coord_map()/sf).
     lat_ratio <- 1 / cos(mean(df$lat) * pi / 180)
+    # Color-scale bounds are user-adjustable (gebied_kleur_min/max, reset to
+    # the current selection's own data range by the observeEvent() below) --
+    # NA on either side falls back to ggplot2's own data-range default for
+    # that side.
     p <- ggplot(df, aes(x = long, y = lat, group = group_var, fill = waarde)) +
       geom_polygon(color = "white", linewidth = 0.3) +
       coord_fixed(ratio = lat_ratio) +
@@ -926,6 +937,7 @@ server <- function(input, output, session) {
         low = "#FBEAE9", high = ahti_branding$colors$fris_rood,
         name = c4c_metric_axis_label(input$gebied_metric),
         labels = VALUE_AXIS_LABELS,
+        limits = c(input$gebied_kleur_min, input$gebied_kleur_max),
         # An area with a boundary but no data that year (e.g. suppressed
         # under CBS's output rules -- see c4c_geo_join_stadsdeel()/
         # c4c_geo_join_wijk()) gets waarde = NA; grey it out explicitly
@@ -933,7 +945,7 @@ server <- function(input, output, session) {
         # white plot background and look like a rendering gap).
         na.value = "grey80"
       ) +
-      labs(title = gebied_title(), x = NULL, y = NULL) +
+      labs(x = NULL, y = NULL) +
       theme_void() +
       theme(legend.position = "right")
     # Name labels only for stadsdeel -- with only 8 areas each label has
@@ -951,9 +963,27 @@ server <- function(input, output, session) {
     p
   })
 
+  # On screen the map keeps its title; the PNG download (gebied_map_download,
+  # below) deliberately omits it, using gebied_map_plot() directly.
   output$gebied_map <- renderPlot({
-    gebied_map_plot()
+    gebied_map_plot() + labs(title = gebied_title())
   })
+
+  # Reset the color-scale bounds to the current selection's own data range
+  # whenever the indicator/metric/niveau changes -- so switching charts
+  # doesn't leave a stale, mismatched min/max behind. Left alone (not
+  # re-triggered) by a plain jaar/gebieden change, so a manually-typed
+  # override survives those.
+  observeEvent(list(input$gebied_indicator, input$gebied_metric, input$gebied_niveau), {
+    shiny::req(input$gebied_metric)
+    df <- gebied_available_data()
+    shiny::req(nrow(df) > 0)
+    waarde <- c4c_apply_metric(df, input$gebied_metric, full_df = OUTCOMES_DATA, breakdown_id = input$gebied_niveau)$waarde
+    waarde <- waarde[is.finite(waarde)]
+    shiny::req(length(waarde) > 0)
+    updateNumericInput(session, "gebied_kleur_min", value = floor(min(waarde)))
+    updateNumericInput(session, "gebied_kleur_max", value = ceiling(max(waarde)))
+  }, ignoreInit = FALSE)
 
   # Hover tooltip (both niveaus, but the only way to see an area's name on
   # the map itself for wijk, which has no permanent labels): a plain
@@ -998,6 +1028,36 @@ server <- function(input, output, session) {
       ggsave(file, plot = gebied_map_plot(), width = 9, height = 7, dpi = 200, bg = "white")
     }
   )
+
+  # Always shows both percentage and absolute count, regardless of
+  # input$gebied_metric -- computed independently via c4c_add_metric()
+  # rather than reading gebied_selected_data()'s already-metric-applied
+  # waarde, since that column only ever holds the one currently-picked
+  # metric.
+  gebied_map_table_data <- reactive({
+    shiny::req(input$gebied_jaar, input$gebied_gebieden, input$gebied_niveau)
+    base <- dplyr::filter(
+      gebied_available_data(),
+      .data$year == as.integer(input$gebied_jaar), .data$groep %in% input$gebied_gebieden
+    )
+    tibble::tibble(
+      groep_label = c4c_relabel_groep(base$groep, input$gebied_niveau),
+      percentage = c4c_add_metric(base, "percentage")$waarde,
+      aantal = c4c_add_metric(base, "absolute")$waarde
+    )
+  })
+
+  output$gebied_map_table <- renderTable({
+    df <- gebied_map_table_data()
+    shiny::req(nrow(df) > 0)
+    df %>%
+      dplyr::arrange(.data$groep_label) %>%
+      dplyr::transmute(
+        Gebied = as.character(.data$groep_label),
+        `Aandeel (%)` = fmt_num(.data$percentage),
+        Aantal = fmt_num(.data$aantal, digits = 0)
+      )
+  })
 
   chart_data_downloads_server(
     id = "gebied_downloads",

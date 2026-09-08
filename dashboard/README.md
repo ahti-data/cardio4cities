@@ -33,21 +33,35 @@ Tabs:
 - **Naar gebied** — any outcome ranked by stadsdeel, gebied (wijk_25) or wijk
   (CBS's own 110-area 2023 wijkindeling) for one chosen year (all three also
   as a choropleth map, with the area name and value on hover, an
-  underlying-data download, and a "Download kaart (PNG)" button); deselect
+  underlying-data download, and a "Download kaart (PNG)" button — which
+  deliberately omits the on-screen title, since a PM pasting the image
+  straight into a slide usually wants to write their own caption); deselect
   specific areas. Stadsdeel's 8 areas get a permanent name label on the map;
   wijk's 110 and wijk_25's 25 (several with long, multi-part names) don't
-  (too cluttered), hence the hover tooltip.
+  (too cluttered), hence the hover tooltip. The map's color scale
+  (`scale_fill_gradient`) auto-fills to the current selection's own
+  min/max whenever the indicator, metric, or niveau changes, but both
+  bounds can be typed over by hand to keep a fixed scale across
+  screenshots. Below the map, a table always shows both the percentage
+  *and* the absolute count for every area, regardless of which metric is
+  selected in the dropdown above.
 - **Favorites / Export history / Manage templates / Dictionary** — shared
   template tabs, see below.
 
 Every chart has a plain data table underneath showing exactly what's
-plotted. Most binary outcomes offer an extra **incidence** metric for
-outcomes named `heeft_eerste_jaar_...` (e.g. a first-ever hypertension
-diagnosis that year): unlike the usual population-wide percentage, this
-divides by the matching `heeft_geen_eerdere_...` outcome's own count — the
-population that hadn't had the event/started the medication yet, i.e.
-genuinely at risk of a first occurrence that year (see
-`c4c_add_incidence()`/`c4c_incidence_denominator_name()` in
+plotted, and every y-axis starts at 0 (`scale_y_continuous(limits = c(0,
+NA), expand = expansion(mult = c(0, 0.05)))` — the `expand` is needed
+alongside `limits`, or ggplot2's default symmetric padding still dips the
+panel below 0). Most binary outcomes offer, alongside the usual
+population-wide percentage, a **prevalentie per 1.000 inwoners** metric
+(same computation as `rate_per_1000` on the continuous outcomes, just also
+exposed as a dropdown choice for binary ones) and, for outcomes named
+`heeft_eerste_jaar_...` (e.g. a first-ever hypertension diagnosis that
+year), an extra **incidence** metric: unlike the usual population-wide
+percentage, this divides by the matching `heeft_geen_eerdere_...`
+outcome's own count — the population that hadn't had the event/started
+the medication yet, i.e. genuinely at risk of a first occurrence that
+year (see `c4c_add_incidence()`/`c4c_incidence_denominator_name()` in
 `utils/cardio_data.R`).
 
 The underlying data lives in `data/cardio4cities_outcomes.csv` (one

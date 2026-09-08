@@ -326,7 +326,11 @@ c4c_available_metrics <- function(kind, name = NULL) {
   base <- if (identical(kind, "continuous")) {
     c("Aantal per 1.000 inwoners" = "rate_per_1000", "Totaal aantal (opnames)" = "absolute")
   } else {
-    c("Aandeel van de bevolking (%)" = "percentage", "Aantal personen" = "absolute")
+    c(
+      "Aandeel van de bevolking (%)" = "percentage",
+      "Prevalentie per 1.000 inwoners" = "rate_per_1000",
+      "Aantal personen" = "absolute"
+    )
   }
   if (!is.null(name) && c4c_is_incidence_eligible(name)) {
     base <- c(base, "Incidentie: aandeel van de risicogroep (%)" = "incidence")
