@@ -53,8 +53,9 @@ Tabs:
   presets to click instead of picking two colors by hand:
   `GEBIED_KLEUR_PRESETS` (one hue, a light tint up to its full color --
   red/blue/green) and `GEBIED_KLEUR_PRESETS_TWEEKLEURIG` (two genuinely
-  different colors, one per end -- blauw naar rood/groen naar paars/
-  grijsblauw naar rood), both rendered via the same `color_preset_buttons()`.
+  different colors, one per end -- blauw naar groen/groen naar paars/
+  grijsblauw naar rood, picked so no two presets share both a low and a high
+  color), both rendered via the same `color_preset_buttons()`.
   Below the map, a table always shows both the percentage *and* the absolute
   count for every area, regardless of which metric is selected in the
   dropdown above.
@@ -62,10 +63,14 @@ Tabs:
   template tabs, see below.
 
 Every chart has a plain data table underneath showing exactly what's
-plotted, and every y-axis starts at 0 (`scale_y_continuous(limits = c(0,
-NA), expand = expansion(mult = c(0, 0.05)))` — the `expand` is needed
-alongside `limits`, or ggplot2's default symmetric padding still dips the
-panel below 0). Most binary outcomes offer, alongside the usual
+plotted. Each tab's own "Y-as bij 0 laten beginnen" checkbox (default
+checked, matching this dashboard's long-standing behavior) toggles its
+y-axis between floored at 0 (`scale_y_continuous(limits = c(0, NA), expand
+= expansion(mult = c(0, 0.05)))` — the `expand` is needed alongside
+`limits`, or ggplot2's default symmetric padding still dips the panel below
+0) and ggplot2's own auto-scaled range when unchecked, for a selection whose
+values sit far from 0 and would otherwise render as a nearly flat line; see
+`y_axis_scale()`. Most binary outcomes offer, alongside the usual
 population-wide percentage, a **prevalentie per 1.000 inwoners** metric
 (same computation as `rate_per_1000` on the continuous outcomes, just also
 exposed as a dropdown choice for binary ones) and, for outcomes named

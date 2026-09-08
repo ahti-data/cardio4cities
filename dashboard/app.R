@@ -135,7 +135,10 @@ GEBIED_KLEUR_PRESETS <- list(
 #' and maximum to read as two distinct colors rather than one color's
 #' intensity.
 GEBIED_KLEUR_PRESETS_TWEEKLEURIG <- list(
-  list(label = "Blauw naar rood", low = ahti_branding$colors$helder_blauw, high = ahti_branding$colors$fris_rood),
+  # Was "Blauw naar rood" (helder_blauw -> fris_rood) -- too close in look to
+  # "Grijsblauw naar rood" below (same high color, and the two blues read as
+  # near-identical at a glance). Replaced with a pair sharing neither end.
+  list(label = "Blauw naar groen", low = ahti_branding$colors$helder_blauw, high = ahti_branding$colors$fris_groen),
   list(label = "Groen naar paars", low = ahti_branding$colors$fris_groen, high = ahti_branding$colors$diep_paars),
   list(label = "Grijsblauw naar rood", low = ahti_branding$colors$grijs_blauw, high = ahti_branding$colors$fris_rood)
 )
@@ -169,6 +172,23 @@ VALUE_AXIS_LABELS <- scales::label_number(big.mark = ".", decimal.mark = ",")
 YEAR_AXIS_LABELS <- scales::label_number(big.mark = "", accuracy = 1)
 YEAR_AXIS_BREAKS <- scales::breaks_pretty(n = 10)
 
+#' A value-axis `scale_y_continuous()`, toggled by each tab's own "Y-as bij 0
+#' laten beginnen" checkbox. Checked (the default, matching this dashboard's
+#' long-standing behavior): floor the axis at 0, with `expand` set to no
+#' padding below it -- `limits = c(0, NA)` alone still lets ggplot2's default
+#' symmetric expansion dip the panel just under 0. Unchecked: ggplot2's own
+#' auto-scaled range, for a selection whose values sit far from 0 and would
+#' otherwise render as a nearly flat line.
+#' @param start_at_zero The relevant tab's checkboxInput() value.
+#' @param labels Passed through to `scale_y_continuous(labels = )`.
+y_axis_scale <- function(start_at_zero, labels = VALUE_AXIS_LABELS) {
+  if (isTRUE(start_at_zero)) {
+    scale_y_continuous(labels = labels, limits = c(0, NA), expand = expansion(mult = c(0, 0.05)))
+  } else {
+    scale_y_continuous(labels = labels)
+  }
+}
+
 app_ui <- fluidPage(
   tc_tab_color_theme(ahti_branding),
   titlePanel(DASHBOARD_TITLE),
@@ -196,7 +216,8 @@ app_ui <- fluidPage(
             choices = c4c_outcome_choices(), selected = DEFAULT_INDICATOR
           ),
           uiOutput("overzicht_metric_ui"),
-          uiOutput("overzicht_jaren_ui")
+          uiOutput("overzicht_jaren_ui"),
+          checkboxInput("overzicht_as_bij_nul", "Y-as bij 0 laten beginnen", value = TRUE)
         ),
         column(
           width = 9,
@@ -242,6 +263,7 @@ app_ui <- fluidPage(
             "Toon als aandeel (%) binnen 'wel'/'geen gebeurtenis'",
             value = FALSE
           ),
+          checkboxInput("zorgpad_as_bij_nul", "Y-as bij 0 laten beginnen", value = TRUE),
           conditionalPanel(
             condition = "input.zorgpad_dimensie != 'yearly_total'",
             uiOutput("zorgpad_dimensie_groepen_ui")
@@ -306,7 +328,8 @@ app_ui <- fluidPage(
             condition = "input.achtergrond_trend",
             uiOutput("achtergrond_jaren_ui")
           ),
-          uiOutput("achtergrond_groepen_ui")
+          uiOutput("achtergrond_groepen_ui"),
+          checkboxInput("achtergrond_as_bij_nul", "Y-as bij 0 laten beginnen", value = TRUE)
         ),
         column(
           width = 9,
@@ -347,6 +370,10 @@ app_ui <- fluidPage(
           uiOutput("gebied_metric_ui"),
           uiOutput("gebied_jaar_ui"),
           uiOutput("gebied_gebieden_ui"),
+          conditionalPanel(
+            condition = paste0("!(", GEBIED_MAP_LEVELS_JS, ") || input.gebied_weergave == 'bar'"),
+            checkboxInput("gebied_as_bij_nul", "Y-as bij 0 laten beginnen", value = TRUE)
+          ),
           conditionalPanel(
             condition = GEBIED_MAP_LEVELS_JS,
             radioButtons(
@@ -497,7 +524,7 @@ server <- function(input, output, session) {
       geom_line(color = ahti_branding$colors$helder_blauw, linewidth = 1) +
       geom_point(color = ahti_branding$colors$helder_blauw, size = 2) +
       scale_x_continuous(breaks = YEAR_AXIS_BREAKS, labels = YEAR_AXIS_LABELS) +
-      scale_y_continuous(labels = VALUE_AXIS_LABELS, limits = c(0, NA), expand = expansion(mult = c(0, 0.05))) +
+      y_axis_scale(input$overzicht_as_bij_nul) +
       labs(
         title = overzicht_title(),
         x = "Jaar", y = c4c_metric_axis_label(input$overzicht_metric)
@@ -614,9 +641,9 @@ server <- function(input, output, session) {
       theme_minimal() +
       theme(legend.position = "bottom", axis.text.x = element_text(angle = 30, hjust = 1))
     if (show_pct) {
-      p <- p + scale_y_continuous(labels = scales::percent, limits = c(0, NA), expand = expansion(mult = c(0, 0.05)))
+      p <- p + y_axis_scale(input$zorgpad_as_bij_nul, labels = scales::percent)
     } else {
-      p <- p + scale_y_continuous(labels = VALUE_AXIS_LABELS, limits = c(0, NA), expand = expansion(mult = c(0, 0.05)))
+      p <- p + y_axis_scale(input$zorgpad_as_bij_nul)
     }
     p
   })
@@ -703,7 +730,7 @@ server <- function(input, output, session) {
       geom_point(size = 2) +
       scale_color_manual(values = c4c_palette(n_groups, ahti_branding$scale_discrete)) +
       scale_x_continuous(breaks = YEAR_AXIS_BREAKS, labels = YEAR_AXIS_LABELS) +
-      scale_y_continuous(labels = VALUE_AXIS_LABELS, limits = c(0, NA), expand = expansion(mult = c(0, 0.05))) +
+      y_axis_scale(input$zorgpad_as_bij_nul) +
       labs(
         title = zorgpad_incidentie_title(), x = "Jaar",
         y = c4c_metric_axis_label("incidence"), color = NULL
@@ -830,7 +857,7 @@ server <- function(input, output, session) {
         geom_point(size = 2) +
         scale_color_manual(values = c4c_palette(n_groups, ahti_branding$scale_discrete)) +
         scale_x_continuous(breaks = YEAR_AXIS_BREAKS, labels = YEAR_AXIS_LABELS) +
-        scale_y_continuous(labels = VALUE_AXIS_LABELS, limits = c(0, NA), expand = expansion(mult = c(0, 0.05))) +
+        y_axis_scale(input$achtergrond_as_bij_nul) +
         labs(title = achtergrond_title(), x = "Jaar", y = y_lab, color = NULL) +
         theme_minimal() +
         theme(legend.position = "bottom")
@@ -842,7 +869,7 @@ server <- function(input, output, session) {
       ))
       ggplot(df, aes(x = groep_label, y = waarde)) +
         geom_col(fill = ahti_branding$colors$helder_blauw) +
-        scale_y_continuous(labels = VALUE_AXIS_LABELS, limits = c(0, NA), expand = expansion(mult = c(0, 0.05))) +
+        y_axis_scale(input$achtergrond_as_bij_nul) +
         labs(title = achtergrond_title(), x = NULL, y = y_lab) +
         theme_minimal() +
         theme(axis.text.x = element_text(angle = 30, hjust = 1))
@@ -960,7 +987,7 @@ server <- function(input, output, session) {
     ggplot(df, aes(x = stats::reorder(groep_label, waarde), y = waarde)) +
       geom_col(fill = ahti_branding$colors$helder_blauw) +
       coord_flip() +
-      scale_y_continuous(labels = VALUE_AXIS_LABELS, limits = c(0, NA), expand = expansion(mult = c(0, 0.05))) +
+      y_axis_scale(input$gebied_as_bij_nul) +
       labs(title = gebied_title(), x = NULL, y = c4c_metric_axis_label(input$gebied_metric)) +
       theme_minimal()
   })
