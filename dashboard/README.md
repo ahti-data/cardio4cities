@@ -30,9 +30,9 @@ Tabs:
   (geslacht, leeftijd, migratieachtergrond, SESWOA, huishouden, inkomen),
   either for one year or as a trend over a slider-selected year range;
   deselect specific groups.
-- **Naar gebied** — any outcome ranked by stadsdeel or gebied (wijk_25) for
-  one chosen year (stadsdeel also as a choropleth map); deselect specific
-  areas.
+- **Naar gebied** — any outcome ranked by stadsdeel, gebied (wijk_25) or wijk
+  (CBS's own 110-area 2023 wijkindeling) for one chosen year (stadsdeel and
+  wijk also as a choropleth map); deselect specific areas.
 - **Favorites / Export history / Manage templates / Dictionary** — shared
   template tabs, see below.
 
@@ -49,9 +49,11 @@ genuinely at risk of a first occurrence that year (see
 The underlying data lives in `data/cardio4cities_outcomes.csv` (one
 long-format row per breakdown/category/year/outcome/metric type — see
 `c4c_load_outcomes()` in `utils/cardio_data.R`), derived from the pipeline's
-own `output.xlsx` export. Raw CBS-code geographic breakdowns without a name
-crosswalk in this bundle ("wijk", "buurt") are intentionally left out —
-"stadsdeel" and "wijk_25" already give a readable geographic split.
+own `output.xlsx` export. "wijk" is the pipeline's own raw `wc2023` CBS
+register code, crosswalked to a name using an external CBS wijk-boundary
+file (`data/geo_wijk.csv`, not part of the pipeline's own export — see
+`c4c_load_geo_wijk()`); "buurt" still has no such crosswalk in this bundle
+and is intentionally left out.
 
 ---
 

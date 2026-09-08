@@ -42,6 +42,14 @@ OUTCOMES_SOURCE_FILE <- basename(C4C_OUTCOMES_FILE)
 OUTCOMES_SOURCE_MTIME <- tc_format_source_mtime(C4C_OUTCOMES_FILE)
 
 GEO_STADSDEEL <- c4c_load_geo_stadsdeel()
+GEO_WIJK <- c4c_load_geo_wijk()
+
+# "Naar gebied" niveaus that offer a choropleth map, in addition to the bar
+# chart every geografisch niveau always gets -- see gebied_map_data().
+GEBIED_MAP_LEVELS <- c("stadsdeel", "wijk")
+GEBIED_MAP_LEVELS_JS <- paste(
+  sprintf("input.gebied_niveau == '%s'", GEBIED_MAP_LEVELS), collapse = " || "
+)
 
 # Never print/format a number in scientific notation anywhere in this app
 # (tables included) -- matches the pipeline's own `options(scipen = 999)`
@@ -239,7 +247,7 @@ app_ui <- fluidPage(
       fluidRow(column(
         width = 12,
         h3("Hart- en vaatziekten naar gebied in Amsterdam"),
-        p("Vergelijk stadsdelen of gebieden (buurtcombinaties) met elkaar voor één gekozen jaar.")
+        p("Vergelijk stadsdelen, gebieden (buurtcombinaties) of wijken met elkaar voor één gekozen jaar.")
       )),
       fluidRow(
         column(
@@ -256,7 +264,7 @@ app_ui <- fluidPage(
           uiOutput("gebied_jaar_ui"),
           uiOutput("gebied_gebieden_ui"),
           conditionalPanel(
-            condition = "input.gebied_niveau == 'stadsdeel'",
+            condition = GEBIED_MAP_LEVELS_JS,
             radioButtons(
               "gebied_weergave", "Weergave",
               choices = c("Staafdiagram" = "bar", "Kaart" = "map")
@@ -266,7 +274,7 @@ app_ui <- fluidPage(
         column(
           width = 9,
           conditionalPanel(
-            condition = "input.gebied_niveau != 'stadsdeel' || input.gebied_weergave == 'bar'",
+            condition = paste0("!(", GEBIED_MAP_LEVELS_JS, ") || input.gebied_weergave == 'bar'"),
             plotOutput("gebied_plot", height = "620px"),
             br(),
             chart_data_downloads_ui("gebied_downloads", chart_type = "bar"),
@@ -274,12 +282,12 @@ app_ui <- fluidPage(
             tableOutput("gebied_table")
           ),
           conditionalPanel(
-            condition = "input.gebied_niveau == 'stadsdeel' && input.gebied_weergave == 'map'",
+            condition = paste0("(", GEBIED_MAP_LEVELS_JS, ") && input.gebied_weergave == 'map'"),
             plotOutput("gebied_map", height = "620px"),
             p(
               style = "font-size:12px; color:#6B7280;",
-              "Weesp (nog geen actuele grens in de gebruikte open geodatabron) en ",
-              "'Onbekend' staan niet op de kaart, maar wel in het staafdiagram. ",
+              "Gebieden zonder actuele grens in de gebruikte open geodatabron (bijv. Weesp bij ",
+              "Stadsdeel) en 'Onbekend' staan niet op de kaart, maar wel in het staafdiagram. ",
               "Ga naar de staafdiagram-weergave om de onderliggende data te downloaden."
             )
           )
@@ -849,8 +857,19 @@ server <- function(input, output, session) {
   })
 
   gebied_map_data <- reactive({
-    shiny::validate(shiny::need(identical(input$gebied_niveau, "stadsdeel"), "Kaart is alleen beschikbaar voor Stadsdeel."))
-    c4c_geo_join_stadsdeel(GEO_STADSDEEL, gebied_selected_data())
+    shiny::validate(shiny::need(
+      input$gebied_niveau %in% GEBIED_MAP_LEVELS,
+      paste0(
+        "Kaart is alleen beschikbaar voor: ",
+        paste(vapply(GEBIED_MAP_LEVELS, function(id) C4C_BREAKDOWNS[[id]]$label, character(1)), collapse = ", "),
+        "."
+      )
+    ))
+    if (identical(input$gebied_niveau, "stadsdeel")) {
+      c4c_geo_join_stadsdeel(GEO_STADSDEEL, gebied_selected_data())
+    } else {
+      c4c_geo_join_wijk(GEO_WIJK, gebied_selected_data())
+    }
   })
 
   output$gebied_map <- renderPlot({
@@ -859,7 +878,16 @@ server <- function(input, output, session) {
       nrow(df) > 0,
       "Onvoldoende data beschikbaar voor deze selectie (mogelijk afgeschermd vanwege CBS-geheimhoudingsregels)."
     ))
-    ggplot(df, aes(x = long, y = lat, group = stadsdeel, fill = waarde)) +
+    # Stadsdeel polygons are single-piece (group = stadsdeel); wijk polygons
+    # can have several disjoint pieces per named area (group = wijk x part;
+    # see c4c_load_geo_wijk()) -- either way ggplot draws one shape per
+    # group and fills it by the shared waarde for that name.
+    group_var <- if (identical(input$gebied_niveau, "stadsdeel")) {
+      df$stadsdeel
+    } else {
+      interaction(df$wijk, df$part)
+    }
+    ggplot(df, aes(x = long, y = lat, group = group_var, fill = waarde)) +
       geom_polygon(color = "white", linewidth = 0.3) +
       coord_equal() +
       scale_fill_gradient(

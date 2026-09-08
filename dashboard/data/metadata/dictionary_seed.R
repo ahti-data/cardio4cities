@@ -83,6 +83,37 @@ dictionary_seed_entries <- function() {
       "Onbekend", "Osdorp", "Oud-Noord", "Oud-Oost", "Oud-West, De Baarsjes",
       "Oud-Zuid", "Sloterdijk Nieuw-West", "Slotervaart", "Watergraafsmeer",
       "Weesp, Driemond", "Westerpark"
-    ), "wijk_25")
+    ), "wijk_25"),
+
+    pass_through(c(
+      "Aetsveld/Oostelijke Vechtoever", "Amstel III/Bullewijk", "Amsterdamse Poort e.o.", "Apollobuurt",
+      "Banne Buiksloot", "Bellamybuurt", "Betondorp", "Bijlmermuseum",
+      "Bloemendalerpolder", "Buikslotermeer", "Buitenveldert-Oost", "Buitenveldert-West",
+      "Burgwallen-Nieuwe Zijde", "Burgwallen-Oude Zijde", "Centrale Markt", "Chassébuurt",
+      "Coenhaven/Minervahaven", "Da Costabuurt", "Dapperbuurt", "De Aker",
+      "De Kolenkit", "De Punt", "De Weteringschans", "Driemond",
+      "Elzenhagen", "Erasmuspark", "Frankendael", "Frederik Hendrikbuurt",
+      "Ganzenhoef e.o.", "Geerdinkhof/Kantershof", "Gein", "Geuzenbuurt",
+      "Geuzenveld", "Grachtengordel-West", "Grachtengordel-Zuid", "H-buurt",
+      "Haarlemmerbuurt", "Havens-West", "Helmersbuurt", "Holendrecht",
+      "Hoofddorppleinbuurt", "Hoofdweg e.o.", "Houthavens", "IJburg-Oost",
+      "IJburg-West", "IJburg-Zuid", "IJplein/Vogelbuurt", "IJselbuurt",
+      "Indische Buurt-Oost", "Indische Buurt-West", "Jordaan", "K-buurt",
+      "Kadoelen", "Landlust", "Lutkemeer/Ookmeer", "Middenmeer",
+      "Museumkwartier", "Nellestein", "Nieuwe Pijp", "Nieuwendammerdijk/Buiksloterdijk",
+      "Nieuwmarkt/Lastage", "Noordelijke IJ-oevers-Oost", "Noordelijke IJ-oevers-West", "Omval/Overamstel",
+      "Oostelijk Havengebied", "Oostelijke Eilanden/Kadijken", "Oosterparkbuurt", "Oostzanerwerf",
+      "Osdorp-Midden", "Osdorp-Oost", "Oude Pijp", "Overtoomse Sluis",
+      "Overtoomse Veld", "Prinses Irenebuurt e.o.", "Reigersbos", "Rijnbuurt",
+      "Scheldebuurt", "Schinkelbuurt", "Sloten/Nieuw-Sloten", "Sloterdijk Nieuw-West",
+      "Sloterdijk-West", "Slotermeer-Noordoost", "Slotermeer-West", "Slotermeer-Zuidoost",
+      "Slotervaart-Noord", "Slotervaart-Zuid", "Spaarndammerbuurt/Zeeheldenbuurt", "Staatsliedenbuurt",
+      "Stadionbuurt", "Transvaalbuurt", "Tuindorp Buiksloot", "Tuindorp Nieuwendam",
+      "Tuindorp Oostzaan", "Van Galenbuurt", "Van Lennepbuurt", "Venserpolder",
+      "Volewijck", "Vondelparkbuurt", "Waterland", "Waterlandpleinbuurt",
+      "Weesp Binnenstad/Zuid", "Weesp-Noordwest", "Weesperbuurt/Plantage", "Weesperzijde",
+      "Westindische Buurt", "Westlandgracht", "Willemspark", "Zeeburgereiland/Bovendiep",
+      "Zuid Pijp", "Zuidas", "Onbekend"
+    ), "wijk")
   )
 }

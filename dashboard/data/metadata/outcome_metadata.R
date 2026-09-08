@@ -105,11 +105,13 @@ C4C_ZORGPAD_INCIDENCE_NAME <- "heeft_eerste_jaar_major_cvd_event"
 
 #' Demographic and geographic breakdowns available in the dashboard (matches
 #' the `breakdown` column of `data/cardio4cities_outcomes.csv`, itself one
-#' sheet name from the pipeline's `code/06_make_desritpives.R` export). Raw
-#' CBS-code breakdowns without a name crosswalk available in this bundle
-#' ("wijk", "buurt") are intentionally left out of this dashboard's data file
-#' -- "stadsdeel" (8 boroughs) and "wijk_25" (25 named areas) already give a
-#' readable geographic split.
+#' sheet name from the pipeline's `code/06_make_desritpives.R` export).
+#' `"wijk"` (CBS's own official 2023 wijkindeling, 110 areas) was crosswalked
+#' from its raw `wc2023` register code to a name using an external CBS
+#' wijk-boundary file (not part of this pipeline's own export) -- see
+#' `data/geo_wijk.csv` and [c4c_geo_join_wijk()] in `utils/cardio_data.R`.
+#' `"buurt"` still has no name crosswalk in this bundle and is intentionally
+#' left out.
 #'
 #' `levels`, where set, fixes a natural display order (used for bar/line
 #' charts in the "Naar achtergrond" tab); `NULL` means "no natural order" --
@@ -157,6 +159,10 @@ C4C_BREAKDOWNS <- list(
   ),
   wijk_25 = list(
     label = "Gebied (buurtcombinatie)", kind = "geografisch",
+    levels = NULL
+  ),
+  wijk = list(
+    label = "Wijk", kind = "geografisch",
     levels = NULL
   )
 )

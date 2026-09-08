@@ -336,6 +336,54 @@ test_that("c4c_geo_join_stadsdeel attaches waarde and keeps polygon vertex order
   expect_equal(centrum$waarde, c(12.5, 12.5, 12.5))
 })
 
+test_that("c4c_load_geo_wijk reads and types the committed polygon CSV, including part", {
+  tmp <- tempfile(fileext = ".csv")
+  writeLines(c(
+    "wijk,part,order,long,lat",
+    "Jordaan,1,0,4.88,52.37",
+    "Jordaan,1,1,4.89,52.37",
+    "IJburg-West,1,0,5.00,52.35",
+    "IJburg-West,2,0,5.02,52.36"
+  ), tmp)
+  on.exit(unlink(tmp))
+
+  out <- c4c_load_geo_wijk(tmp)
+  expect_true(is.integer(out$part))
+  expect_true(is.integer(out$order))
+  expect_true(is.numeric(out$long))
+  expect_true(is.numeric(out$lat))
+  expect_equal(nrow(out), 4)
+})
+
+test_that("c4c_geo_join_wijk attaches waarde and keeps vertex order within each polygon piece", {
+  geo <- tibble::tribble(
+    ~wijk,          ~part, ~order, ~long, ~lat,
+    "IJburg-West",  1,     1,      5.01,  52.35,
+    "IJburg-West",  1,     0,      5.00,  52.35,
+    "IJburg-West",  2,     0,      5.02,  52.36,
+    "Jordaan",      1,     0,      4.88,  52.37
+  )
+  outcome <- tibble::tribble(
+    ~groep,         ~waarde,
+    "IJburg-West",  12.5,
+    "Jordaan",      8.0,
+    "Onbekend",     3.0
+  )
+
+  out <- c4c_geo_join_wijk(geo, outcome)
+
+  # Onbekend has no polygon, so it's dropped (inner join).
+  expect_setequal(unique(out$wijk), c("IJburg-West", "Jordaan"))
+
+  # Vertex order within each (wijk, part) piece is restored.
+  piece1 <- out[out$wijk == "IJburg-West" & out$part == 1, ]
+  expect_equal(piece1$order, c(0, 1))
+  expect_equal(piece1$waarde, c(12.5, 12.5))
+
+  # Both pieces of the multi-part wijk survive the join, distinctly.
+  expect_equal(nrow(out[out$wijk == "IJburg-West", ]), 3)
+})
+
 test_that("c4c_load_outcomes reads and types the committed CSV correctly", {
   tmp <- tempfile(fileext = ".csv")
   writeLines(c(

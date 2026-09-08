@@ -22,6 +22,10 @@ C4C_OUTCOMES_FILE <- file.path("data", "cardio4cities_outcomes.csv")
 #' [c4c_load_geo_stadsdeel()]).
 C4C_GEO_STADSDEEL_FILE <- file.path("data", "geo_stadsdeel.csv")
 
+#' Default path to the committed wijk boundary polygons (see
+#' [c4c_load_geo_wijk()]).
+C4C_GEO_WIJK_FILE <- file.path("data", "geo_wijk.csv")
+
 #' Read and type the outcomes export.
 #' @param path Path to the CSV (see [C4C_OUTCOMES_FILE]).
 #' @return A tibble with columns `breakdown`, `groep`, `year`, `n_totaal`,
@@ -76,6 +80,52 @@ c4c_load_geo_stadsdeel <- function(path = C4C_GEO_STADSDEEL_FILE) {
 c4c_geo_join_stadsdeel <- function(geo_df, outcome_df) {
   out <- dplyr::inner_join(geo_df, outcome_df, by = c("stadsdeel" = "groep"))
   dplyr::arrange(out, .data$stadsdeel, .data$order)
+}
+
+#' Read the wijk boundary polygons used by the "Naar gebied" tab's map view:
+#' one row per polygon vertex (`wijk`, `part`, `order`, `long`, `lat`),
+#' already simplified and in plain WGS84 lon/lat -- same
+#' `ggplot2::geom_polygon()`-ready shape as [c4c_load_geo_stadsdeel()], for
+#' the same reason (no `sf`/GDAL dependency). `part` distinguishes a wijk's
+#' disjoint polygon pieces (4 of Amsterdam's 110 wijken have more than one,
+#' e.g. an island) -- [c4c_geo_join_wijk()] leaves grouping by both `wijk`
+#' and `part` to the caller (`ggplot2::aes(group = interaction(wijk, part))`),
+#' since a plain `group = wijk` would wrongly connect a multi-piece wijk's
+#' separate shapes into one polygon.
+#'
+#' Boundaries come from CBS's official 2023 wijkindeling (matching this
+#' pipeline's own `wc2023` register variable exactly, verified by an exact
+#' code-set match against `code/01_find_registrations.R`'s raw `wijk`
+#' output), simplified with Douglas-Peucker to keep the file small. One
+#' wijk (Zeeburgereiland/Bovendiep) has an interior hole (water) in the
+#' source data; it's dropped here since plain `geom_polygon()` can't render
+#' holes without `sf` -- a minor, disclosed simplification.
+#' @param path Path to the CSV (see [C4C_GEO_WIJK_FILE]).
+#' @return A tibble with columns `wijk`, `part`, `order`, `long`, `lat`.
+c4c_load_geo_wijk <- function(path = C4C_GEO_WIJK_FILE) {
+  df <- utils::read.csv(path, stringsAsFactors = FALSE)
+  df$part <- as.integer(df$part)
+  df$order <- as.integer(df$order)
+  df$long <- as.numeric(df$long)
+  df$lat <- as.numeric(df$lat)
+  tibble::as_tibble(df)
+}
+
+#' Join wijk boundary polygons to one outcome/year/metric slice, for a
+#' choropleth map -- see [c4c_geo_join_stadsdeel()] (same shape, one more
+#' grouping column). Preserves vertex order within each polygon piece,
+#' required for `ggplot2::geom_polygon()`. An inner join: a wijk with no
+#' boundary (e.g. `"Onbekend"`) is silently dropped from the map, but still
+#' appears normally in the "Naar gebied" bar chart.
+#' @param geo_df Result of [c4c_load_geo_wijk()].
+#' @param outcome_df A single (year, metric) slice with `groep` (raw wijk
+#'   name) and `waarde` columns, e.g. [c4c_add_metric()]'s output filtered
+#'   to one year for `breakdown_id` `"wijk"`.
+#' @return Tibble of polygon vertices with the matching `waarde` attached,
+#'   ordered for plotting.
+c4c_geo_join_wijk <- function(geo_df, outcome_df) {
+  out <- dplyr::inner_join(geo_df, outcome_df, by = c("wijk" = "groep"))
+  dplyr::arrange(out, .data$wijk, .data$part, .data$order)
 }
 
 #' Whether an outcome's raw name is binary (`heeft_...`, exported only as a
