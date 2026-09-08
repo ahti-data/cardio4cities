@@ -200,6 +200,51 @@ test_that("c4c_palette interpolates extra colours instead of erroring when n exc
   expect_length(unique(out), 8)
 })
 
+test_that("c4c_load_geo_stadsdeel reads and types the committed polygon CSV", {
+  tmp <- tempfile(fileext = ".csv")
+  writeLines(c(
+    "stadsdeel,order,long,lat",
+    "Centrum,0,4.9,52.37",
+    "Centrum,1,4.91,52.37",
+    "Centrum,2,4.91,52.38"
+  ), tmp)
+  on.exit(unlink(tmp))
+
+  out <- c4c_load_geo_stadsdeel(tmp)
+  expect_true(is.integer(out$order))
+  expect_true(is.numeric(out$long))
+  expect_true(is.numeric(out$lat))
+  expect_equal(nrow(out), 3)
+})
+
+test_that("c4c_geo_join_stadsdeel attaches waarde and keeps polygon vertex order", {
+  geo <- tibble::tribble(
+    ~stadsdeel, ~order, ~long, ~lat,
+    "Centrum",  2,      4.91,  52.38,
+    "Centrum",  0,      4.90,  52.37,
+    "Zuid",     0,      4.88,  52.35,
+    "Centrum",  1,      4.91,  52.37
+  )
+  outcome <- tibble::tribble(
+    ~groep,    ~waarde,
+    "Centrum", 12.5,
+    "Zuid",    8.0,
+    "Weesp",   3.0
+  )
+
+  out <- c4c_geo_join_stadsdeel(geo, outcome)
+
+  # Weesp has no polygon, so it's dropped (inner join); Zuid has no waarde
+  # issue but is present in both -- both should survive.
+  expect_setequal(unique(out$stadsdeel), c("Centrum", "Zuid"))
+
+  # Vertex order within each stadsdeel must be restored (0, 1, 2), even
+  # though the input geo data frame was shuffled.
+  centrum <- out[out$stadsdeel == "Centrum", ]
+  expect_equal(centrum$order, c(0, 1, 2))
+  expect_equal(centrum$waarde, c(12.5, 12.5, 12.5))
+})
+
 test_that("c4c_load_outcomes reads and types the committed CSV correctly", {
   tmp <- tempfile(fileext = ".csv")
   writeLines(c(

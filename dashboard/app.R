@@ -43,6 +43,8 @@ OUTCOMES_SOURCE_MTIME <- tc_format_source_mtime(C4C_OUTCOMES_FILE)
 
 LATEST_YEAR <- max(OUTCOMES_DATA$year[OUTCOMES_DATA$breakdown == "yearly_total"])
 
+GEO_STADSDEEL <- c4c_load_geo_stadsdeel()
+
 DEFAULT_INDICATOR <- "heeft_hartinfarct_of_acute_beroerte_lbz_of_do"
 
 DEMOGRAFISCHE_BREAKDOWNS <- Filter(function(b) identical(b$kind, "demografisch"), C4C_BREAKDOWNS)
@@ -223,13 +225,33 @@ app_ui <- fluidPage(
             choices = breakdown_select_choices(GEOGRAFISCHE_BREAKDOWNS)
           ),
           uiOutput("gebied_metric_ui"),
-          uiOutput("gebied_jaar_ui")
+          uiOutput("gebied_jaar_ui"),
+          conditionalPanel(
+            condition = "input.gebied_niveau == 'stadsdeel'",
+            radioButtons(
+              "gebied_weergave", "Weergave",
+              choices = c("Staafdiagram" = "bar", "Kaart" = "map")
+            )
+          )
         ),
         column(
           width = 9,
-          plotOutput("gebied_plot", height = "620px"),
-          br(),
-          chart_data_downloads_ui("gebied_downloads", chart_type = "bar")
+          conditionalPanel(
+            condition = "input.gebied_niveau != 'stadsdeel' || input.gebied_weergave == 'bar'",
+            plotOutput("gebied_plot", height = "620px"),
+            br(),
+            chart_data_downloads_ui("gebied_downloads", chart_type = "bar")
+          ),
+          conditionalPanel(
+            condition = "input.gebied_niveau == 'stadsdeel' && input.gebied_weergave == 'map'",
+            plotOutput("gebied_map", height = "620px"),
+            p(
+              style = "font-size:12px; color:#6B7280;",
+              "Weesp (nog geen actuele grens in de gebruikte open geodatabron) en ",
+              "'Onbekend' staan niet op de kaart, maar wel in het staafdiagram. ",
+              "Ga naar de staafdiagram-weergave om de onderliggende data te downloaden."
+            )
+          )
         )
       )
     ),
@@ -564,6 +586,32 @@ server <- function(input, output, session) {
       coord_flip() +
       labs(title = gebied_title(), x = NULL, y = c4c_metric_axis_label(input$gebied_metric)) +
       theme_minimal()
+  })
+
+  gebied_map_data <- reactive({
+    shiny::req(input$gebied_jaar, input$gebied_metric)
+    shiny::validate(shiny::need(identical(input$gebied_niveau, "stadsdeel"), "Kaart is alleen beschikbaar voor Stadsdeel."))
+    df <- dplyr::filter(gebied_available_data(), .data$year == as.integer(input$gebied_jaar))
+    df <- c4c_add_metric(df, input$gebied_metric)
+    c4c_geo_join_stadsdeel(GEO_STADSDEEL, df)
+  })
+
+  output$gebied_map <- renderPlot({
+    df <- gebied_map_data()
+    shiny::validate(shiny::need(
+      nrow(df) > 0,
+      "Onvoldoende data beschikbaar voor deze selectie (mogelijk afgeschermd vanwege CBS-geheimhoudingsregels)."
+    ))
+    ggplot(df, aes(x = long, y = lat, group = stadsdeel, fill = waarde)) +
+      geom_polygon(color = "white", linewidth = 0.3) +
+      coord_equal() +
+      scale_fill_gradient(
+        low = "#FBEAE9", high = ahti_branding$colors$fris_rood,
+        name = c4c_metric_axis_label(input$gebied_metric)
+      ) +
+      labs(title = gebied_title(), x = NULL, y = NULL) +
+      theme_void() +
+      theme(legend.position = "right")
   })
 
   chart_data_downloads_server(

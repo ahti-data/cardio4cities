@@ -18,6 +18,10 @@
 #' Default path to the committed outcomes export.
 C4C_OUTCOMES_FILE <- file.path("data", "cardio4cities_outcomes.csv")
 
+#' Default path to the committed stadsdeel boundary polygons (see
+#' [c4c_load_geo_stadsdeel()]).
+C4C_GEO_STADSDEEL_FILE <- file.path("data", "geo_stadsdeel.csv")
+
 #' Read and type the outcomes export.
 #' @param path Path to the CSV (see [C4C_OUTCOMES_FILE]).
 #' @return A tibble with columns `breakdown`, `groep`, `year`, `n_totaal`,
@@ -28,6 +32,50 @@ c4c_load_outcomes <- function(path = C4C_OUTCOMES_FILE) {
   df$n_totaal <- as.numeric(df$n_totaal)
   df$value <- as.numeric(df$value)
   tibble::as_tibble(df)
+}
+
+#' Read the stadsdeel boundary polygons used by the "Naar gebied" tab's map
+#' view: one row per polygon vertex (`stadsdeel`, `order`, `long`, `lat`),
+#' already simplified and in plain WGS84 lon/lat. Boundaries come from the
+#' Who's On First open gazetteer's Amsterdam "borough" records
+#' (github.com/whosonfirst-data/whosonfirst-data-admin-nl, current as of
+#' this file's creation), matched to our own `stadsdeel` names and
+#' simplified (Douglas-Peucker, tolerance 0.0002 degrees -- under 0.2% area
+#' error) to keep the file small. Deliberately
+#' plain `ggplot2::geom_polygon()`-ready data, not an `sf` object: this avoids
+#' adding the `sf` package (and its GDAL/GEOS/PROJ system dependencies) to
+#' the dashboard's deploy requirements for a single static map.
+#'
+#' Only 8 of Amsterdam's stadsdelen have a boundary here -- "Weesp" (merged
+#' into Amsterdam in 2022) isn't yet in the open boundary source this file
+#' was built from, and "Onbekend" has no location by definition. Both still
+#' appear normally in the "Naar gebied" bar chart; [c4c_geo_join_stadsdeel()]
+#' simply drops them from the map.
+#' @param path Path to the CSV (see [C4C_GEO_STADSDEEL_FILE]).
+#' @return A tibble with columns `stadsdeel`, `order`, `long`, `lat`.
+c4c_load_geo_stadsdeel <- function(path = C4C_GEO_STADSDEEL_FILE) {
+  df <- utils::read.csv(path, stringsAsFactors = FALSE)
+  df$order <- as.integer(df$order)
+  df$long <- as.numeric(df$long)
+  df$lat <- as.numeric(df$lat)
+  tibble::as_tibble(df)
+}
+
+#' Join stadsdeel boundary polygons to one outcome/year/metric slice, for a
+#' choropleth map. Preserves each polygon's vertex order (required for
+#' `ggplot2::geom_polygon()` to draw a correct shape, and not guaranteed by
+#' a join). Areas with no boundary (see [c4c_load_geo_stadsdeel()]) are
+#' silently dropped -- an inner join, since a map can only show what it has
+#' a shape for.
+#' @param geo_df Result of [c4c_load_geo_stadsdeel()].
+#' @param outcome_df A single (year, metric) slice with `groep` (raw
+#'   stadsdeel name) and `waarde` columns, e.g. [c4c_add_metric()]'s output
+#'   filtered to one year for `breakdown_id` `"stadsdeel"`.
+#' @return Tibble of polygon vertices with the matching `waarde` attached,
+#'   ordered for plotting.
+c4c_geo_join_stadsdeel <- function(geo_df, outcome_df) {
+  out <- dplyr::inner_join(geo_df, outcome_df, by = c("stadsdeel" = "groep"))
+  dplyr::arrange(out, .data$stadsdeel, .data$order)
 }
 
 #' Whether an outcome's raw name is binary (`heeft_...`, exported only as a
