@@ -1,6 +1,44 @@
+# Cardio4Cities dashboard
+
+This deployment explores the aggregated, CBS-cleared output of the
+Cardio4Cities project (het Amsterdam health & technology institute, ahti —
+Health Insights): Amsterdam residents' use of risk-factor medication
+(diabetes, cholesterol, blood pressure) and cardiovascular events (heart
+attack, acute stroke — hospital admission or death), 2006–2024. Every number
+has already been through CBS's own output rules before leaving Remote
+Access (a cell covering fewer than 10 people is dropped, every denominator
+rounded to the nearest 10) — see `utils/cardio_data.R`'s header comment and
+`data/metadata/outcome_metadata.R` for what each raw outcome column means.
+
+Tabs:
+
+- **Overzicht** — Amsterdam-wide KPIs and a trend line for any of the 31
+  outcomes, 2006–2024.
+- **Zorgpad** — the project's flagship comparison: of everyone with a first
+  major cardiovascular event, how many had already used risk-factor
+  medication beforehand vs. not.
+- **Naar achtergrond** — any outcome split by a demographic dimension
+  (geslacht, leeftijd, migratieachtergrond, SESWOA, huishouden, inkomen),
+  either for one year or as a trend.
+- **Naar gebied** — any outcome ranked by stadsdeel or gebied (wijk_25) for
+  one chosen year.
+- **Favorites / Export history / Manage templates / Dictionary** — shared
+  template tabs, see below.
+
+The underlying data lives in `data/cardio4cities_outcomes.csv` (one
+long-format row per breakdown/category/year/outcome/metric type — see
+`c4c_load_outcomes()` in `utils/cardio_data.R`), derived from the pipeline's
+own `output.xlsx` export. Raw CBS-code geographic breakdowns without a name
+crosswalk in this bundle ("wijk", "buurt") are intentionally left out —
+"stadsdeel" and "wijk_25" already give a readable geographic split.
+
+---
+
 # Shiny Dashboard Template
 
-This repository is a starter template for Shiny dashboards.
+This repository is a starter template for Shiny dashboards — the rest of
+this document describes the shared template conventions this deployment is
+built on.
 
 Use it as follows:
 
