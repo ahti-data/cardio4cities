@@ -39,12 +39,15 @@ Tabs:
   specific areas. Stadsdeel's 8 areas get a permanent name label on the map;
   wijk's 110 and wijk_25's 25 (several with long, multi-part names) don't
   (too cluttered), hence the hover tooltip. The map's color scale
-  (`scale_fill_gradient`) auto-fills to the current selection's own
-  min/max whenever the indicator, metric, or niveau changes, but both
-  bounds can be typed over by hand to keep a fixed scale across
-  screenshots. Below the map, a table always shows both the percentage
-  *and* the absolute count for every area, regardless of which metric is
-  selected in the dropdown above.
+  (`scale_fill_gradient`) auto-fills its min/max *values* to the current
+  selection's own data range whenever the indicator, metric, or niveau
+  changes, but both bounds can be typed over by hand to keep a fixed scale
+  across screenshots; the low/high *colors* themselves are also
+  user-adjustable, via a plain HTML5 color picker for each end
+  (`color_picker_input()` — no extra package, since this deployment can't
+  reach CRAN to install one). Below the map, a table always shows both the
+  percentage *and* the absolute count for every area, regardless of which
+  metric is selected in the dropdown above.
 - **Favorites / Export history / Manage templates / Dictionary** — shared
   template tabs, see below.
 

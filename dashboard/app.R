@@ -67,6 +67,28 @@ breakdown_select_choices <- function(breakdowns) {
   stats::setNames(names(breakdowns), vapply(breakdowns, function(b) b$label, character(1)))
 }
 
+#' A plain HTML5 color-picker input (`<input type="color">`), wired to Shiny
+#' with a `Shiny.setInputValue()` call on every `input` event (fires live
+#' while dragging the swatch, not just once the picker closes). Deliberately
+#' not the `colourpicker` package -- it isn't installed, and this dashboard's
+#' deploy target has no general internet access to fetch a new CRAN package.
+#' @param inputId The input slot that will be used to access the value.
+#' @param label Display label.
+#' @param value Initial hex color (e.g. `"#EE3124"`); mirror this same
+#'   default in the server-side reactive that reads `input[[inputId]]`, since
+#'   the server only learns of a value once the user first interacts with it.
+color_picker_input <- function(inputId, label, value = "#000000") {
+  tags$div(
+    class = "form-group shiny-input-container",
+    tags$label(label, `for` = inputId, class = "control-label"),
+    tags$input(
+      type = "color", id = inputId, value = value,
+      style = "display: block; width: 100%; height: 34px; padding: 2px; border: 1px solid #ccc; border-radius: 4px;",
+      oninput = sprintf("Shiny.setInputValue('%s', this.value)", inputId)
+    )
+  )
+}
+
 #' Dutch-formatted number (`.` thousands separator, `,` decimals) for a data
 #' table cell -- never scientific notation, regardless of magnitude.
 #' @param x Numeric vector.
@@ -271,7 +293,9 @@ app_ui <- fluidPage(
             conditionalPanel(
               condition = "input.gebied_weergave == 'map'",
               numericInput("gebied_kleur_min", "Kleurschaal: minimum", value = NA),
-              numericInput("gebied_kleur_max", "Kleurschaal: maximum", value = NA)
+              numericInput("gebied_kleur_max", "Kleurschaal: maximum", value = NA),
+              color_picker_input("gebied_kleur_laag", "Kleurschaal: kleur bij minimum", value = "#FBEAE9"),
+              color_picker_input("gebied_kleur_hoog", "Kleurschaal: kleur bij maximum", value = ahti_branding$colors$fris_rood)
             )
           )
         ),
@@ -929,12 +953,18 @@ server <- function(input, output, session) {
     # Color-scale bounds are user-adjustable (gebied_kleur_min/max, reset to
     # the current selection's own data range by the observeEvent() below) --
     # NA on either side falls back to ggplot2's own data-range default for
-    # that side.
+    # that side. The low/high colors themselves are user-adjustable too
+    # (gebied_kleur_laag/hoog, plain HTML5 color pickers -- see
+    # color_picker_input()); input[[...]] stays NULL until the user first
+    # touches that picker, so fall back to the same default shown as its
+    # initial swatch value.
+    kleur_laag <- if (!is.null(input$gebied_kleur_laag)) input$gebied_kleur_laag else "#FBEAE9"
+    kleur_hoog <- if (!is.null(input$gebied_kleur_hoog)) input$gebied_kleur_hoog else ahti_branding$colors$fris_rood
     p <- ggplot(df, aes(x = long, y = lat, group = group_var, fill = waarde)) +
       geom_polygon(color = "white", linewidth = 0.3) +
       coord_fixed(ratio = lat_ratio) +
       scale_fill_gradient(
-        low = "#FBEAE9", high = ahti_branding$colors$fris_rood,
+        low = kleur_laag, high = kleur_hoog,
         name = c4c_metric_axis_label(input$gebied_metric),
         labels = VALUE_AXIS_LABELS,
         limits = c(input$gebied_kleur_min, input$gebied_kleur_max),
