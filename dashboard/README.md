@@ -19,7 +19,13 @@ Tabs:
   event, and had they already used risk-factor medication beforehand? Pick
   any subset of the 4 groups and a year range via a slider; the "event" and
   "no event" groups are faceted with independent y-axes since they sit on
-  wildly different scales.
+  wildly different scales. An "Uitsplitsing" picker splits the same
+  cross-tab by any demographic or geographic breakdown instead of just the
+  Amsterdam-wide total (deselect specific groups within it to keep the
+  facet grid readable). Below it, a separate line chart tracks the
+  **incidence** of a first major CVD event — the share of the population
+  still at risk (no prior event) that had one that year — for the same
+  year range and breakdown.
 - **Naar achtergrond** — any outcome split by a demographic dimension
   (geslacht, leeftijd, migratieachtergrond, SESWOA, huishouden, inkomen),
   either for one year or as a trend over a slider-selected year range;

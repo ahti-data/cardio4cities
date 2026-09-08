@@ -101,7 +101,15 @@ make_test_outcomes <- function() {
     "yearly_total",   "",         2022,  900000,    "heeft_eerste_event_geen_medicatie_n_totaal_gebruikers", 400, "heeft_eerste_event_geen_medicatie",           "n_totaal_gebruikers",
     "yearly_total",   "",         2022,  900000,    "heeft_eerste_event_met_medicatie_n_totaal_gebruikers", 1300, "heeft_eerste_event_met_medicatie",            "n_totaal_gebruikers",
     "yearly_total",   "",         2023,  915280,    "heeft_eerste_jaar_hi_event_n_totaal_gebruikers",  90, "heeft_eerste_jaar_hi_event",                  "n_totaal_gebruikers",
-    "yearly_total",   "",         2023,  915280,    "heeft_geen_eerdere_hi_event_n_totaal_gebruikers", 910000, "heeft_geen_eerdere_hi_event",                 "n_totaal_gebruikers"
+    "yearly_total",   "",         2023,  915280,    "heeft_geen_eerdere_hi_event_n_totaal_gebruikers", 910000, "heeft_geen_eerdere_hi_event",                 "n_totaal_gebruikers",
+    "geslacht",       "Mannen",   2023,  450000,    "heeft_eerste_event_geen_medicatie_n_totaal_gebruikers", 40, "heeft_eerste_event_geen_medicatie",         "n_totaal_gebruikers",
+    "geslacht",       "Vrouwen",  2023,  465280,    "heeft_eerste_event_geen_medicatie_n_totaal_gebruikers", 20, "heeft_eerste_event_geen_medicatie",         "n_totaal_gebruikers",
+    "geslacht",       "Mannen",   2023,  450000,    "heeft_eerste_event_met_medicatie_n_totaal_gebruikers", 100, "heeft_eerste_event_met_medicatie",           "n_totaal_gebruikers",
+    "geslacht",       "Vrouwen",  2023,  465280,    "heeft_eerste_event_met_medicatie_n_totaal_gebruikers", 60, "heeft_eerste_event_met_medicatie",            "n_totaal_gebruikers",
+    "geslacht",       "Mannen",   2023,  450000,    "heeft_eerste_jaar_major_cvd_event_n_totaal_gebruikers", 140, "heeft_eerste_jaar_major_cvd_event",         "n_totaal_gebruikers",
+    "geslacht",       "Vrouwen",  2023,  465280,    "heeft_eerste_jaar_major_cvd_event_n_totaal_gebruikers", 80, "heeft_eerste_jaar_major_cvd_event",          "n_totaal_gebruikers",
+    "geslacht",       "Mannen",   2023,  450000,    "heeft_geen_eerdere_major_cvd_event_n_totaal_gebruikers", 447000, "heeft_geen_eerdere_major_cvd_event",     "n_totaal_gebruikers",
+    "geslacht",       "Vrouwen",  2023,  465280,    "heeft_geen_eerdere_major_cvd_event_n_totaal_gebruikers", 463000, "heeft_geen_eerdere_major_cvd_event",     "n_totaal_gebruikers"
   )
 }
 
@@ -215,6 +223,34 @@ test_that("c4c_zorgpad_data respects a names subset and a years filter", {
   expect_equal(out_2023$year, rep(2023, nrow(out_2023)))
 })
 
+test_that("c4c_zorgpad_data defaults to yearly_total with a constant 'Amsterdam' breakdown_label and a plain facet_key", {
+  df <- make_test_outcomes()
+  out <- c4c_zorgpad_data(df, years = 2023)
+  expect_true(all(as.character(out$breakdown_label) == "Amsterdam"))
+  expect_equal(out$facet_key, as.character(out$heeft_event))
+})
+
+test_that("c4c_zorgpad_data supports a non-default breakdown_id, adding breakdown_label and a combined facet_key", {
+  df <- make_test_outcomes()
+  out <- c4c_zorgpad_data(df, names = C4C_ZORGPAD_EVENT_NAMES, breakdown_id = "geslacht", years = 2023)
+  expect_equal(nrow(out), 4)
+  expect_setequal(out$groep, c("Mannen", "Vrouwen"))
+  expect_setequal(as.character(out$breakdown_label), c("Mannen", "Vrouwen"))
+  expect_true(all(grepl("\\|", out$facet_key)))
+  expect_equal(
+    out$facet_key[out$groep == "Mannen" & out$name == "heeft_eerste_event_geen_medicatie"],
+    "Wel gebeurtenis | Mannen"
+  )
+})
+
+test_that("c4c_breakdown_label returns 'Amsterdam' for yearly_total and relabels/orders otherwise", {
+  expect_equal(c4c_breakdown_label(c("", ""), "yearly_total"), c("Amsterdam", "Amsterdam"))
+
+  out <- c4c_breakdown_label(c("Vrouwen", "Mannen"), "geslacht")
+  expect_equal(as.character(out), c("Vrouwen", "Mannen"))
+  expect_equal(levels(out), c("Mannen", "Vrouwen"))
+})
+
 test_that("c4c_add_incidence divides by the at-risk (geen_eerdere) population, not n_totaal", {
   df <- make_test_outcomes()
   numerator <- c4c_filter_outcome(df, "yearly_total", "heeft_eerste_jaar_hi_event", "n_totaal_gebruikers")
@@ -231,6 +267,15 @@ test_that("c4c_apply_metric dispatches to c4c_add_incidence only for the inciden
 
   pct_out <- c4c_apply_metric(numerator, "percentage")
   expect_equal(pct_out$waarde, 90 / 915280 * 100)
+})
+
+test_that("C4C_ZORGPAD_INCIDENCE_NAME's incidence works per breakdown, feeding the Zorgpad tab's rate chart", {
+  df <- make_test_outcomes()
+  numerator <- c4c_filter_outcome(df, "geslacht", C4C_ZORGPAD_INCIDENCE_NAME, "n_totaal_gebruikers")
+  out <- c4c_apply_metric(numerator, "incidence", full_df = df, breakdown_id = "geslacht")
+  expect_setequal(out$groep, c("Mannen", "Vrouwen"))
+  expect_equal(out$waarde[out$groep == "Mannen"], 140 / 447000 * 100)
+  expect_equal(out$waarde[out$groep == "Vrouwen"], 80 / 463000 * 100)
 })
 
 test_that("c4c_palette reuses the base palette when it already has enough colours", {

@@ -93,6 +93,16 @@ C4C_ZORGPAD_ALL_NAMES <- c(
   "heeft_geen_eerste_event_met_medicatie"
 )
 
+#' The outcome behind the "Zorgpad" tab's separate incidence-percentage
+#' chart: everyone with a first major CVD event (heart attack or acute
+#' stroke) that year, divided by its matching `"heeft_geen_eerdere_..."`
+#' at-risk population (see [c4c_incidence_denominator_name()] in
+#' `utils/cardio_data.R`) -- i.e. what share of Amsterdammers still at risk
+#' had a first event that year. Distinct from [C4C_ZORGPAD_ALL_NAMES]'s
+#' 4-group cross-tab, which splits the same "first event" population by
+#' *medication* history instead of computing a rate.
+C4C_ZORGPAD_INCIDENCE_NAME <- "heeft_eerste_jaar_major_cvd_event"
+
 #' Demographic and geographic breakdowns available in the dashboard (matches
 #' the `breakdown` column of `data/cardio4cities_outcomes.csv`, itself one
 #' sheet name from the pipeline's `code/06_make_desritpives.R` export). Raw

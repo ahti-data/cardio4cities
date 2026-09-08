@@ -293,6 +293,22 @@ c4c_order_groep <- function(x, breakdown_id, breakdowns = C4C_BREAKDOWNS) {
   factor(x, levels = present)
 }
 
+#' Human-readable label for a breakdown's raw `groep` category, shared by
+#' every chart that can split by an arbitrary breakdown (including
+#' `"yearly_total"`, which has no real category to split by). `"yearly_total"`
+#' rows always carry a constant, blank `groep` (`""` -- there's nothing to
+#' break out), which is relabeled here to `"Amsterdam"` rather than shown
+#' blank; every other breakdown is ordered ([c4c_order_groep()]) and
+#' relabeled through the shared Dictionary ([c4c_relabel_groep()]).
+#' @param groep Character vector of raw `groep` values.
+#' @param breakdown_id One of `names(C4C_BREAKDOWNS)`, or `"yearly_total"`.
+c4c_breakdown_label <- function(groep, breakdown_id) {
+  if (identical(breakdown_id, "yearly_total")) {
+    return(rep("Amsterdam", length(groep)))
+  }
+  c4c_relabel_groep(c4c_order_groep(groep, breakdown_id), breakdown_id)
+}
+
 #' A categorical colour palette of length `n`. Uses `base` (the AHTI brand
 #' palette, `ahti_branding$scale_discrete`) directly when it already has
 #' enough colours, and interpolates additional ones otherwise -- some
@@ -314,17 +330,29 @@ c4c_palette <- function(n, base) {
 #' other, since the two "event" groups (a few hundred people) and the two
 #' "no event" groups (most of the population) sit on wildly different
 #' scales -- faceting with a free y-axis keeps both readable.
+#'
+#' `breakdown_id` lets the same cross-tab be split further by any
+#' demographic/geographic breakdown (e.g. `"geslacht"`), not just the
+#' Amsterdam-wide default (`"yearly_total"`) -- see `breakdown_label`
+#' (relabeled/ordered `groep`, `"Amsterdam"` for `"yearly_total"`) and
+#' `facet_key` (a single column combining `heeft_event` and
+#' `breakdown_label`, for `chart_data_downloads_server()`'s `facet_col`,
+#' which only supports one facet dimension -- equal to plain `heeft_event`
+#' when `breakdown_id` is `"yearly_total"`, so the default export is
+#' unaffected).
 #' @param df Result of [c4c_load_outcomes()].
 #' @param names Character vector of outcome names to include (a subset of
 #'   [C4C_ZORGPAD_ALL_NAMES]) -- lets the "Zorgpad" tab's group picker show
 #'   only the selected groups. Defaults to all 4.
 #' @param years Optional integer vector to restrict `year` to.
-#' @return Tibble with columns `year`, `name`, `groep_label`, `heeft_event`,
-#'   `heeft_medicatie`, `waarde`.
-c4c_zorgpad_data <- function(df, names = C4C_ZORGPAD_ALL_NAMES, years = NULL) {
+#' @param breakdown_id One of `names(C4C_BREAKDOWNS)`, or `"yearly_total"`
+#'   (default) for the Amsterdam-wide total.
+#' @return Tibble with columns `year`, `groep`, `name`, `groep_label`,
+#'   `heeft_event`, `heeft_medicatie`, `breakdown_label`, `facet_key`, `waarde`.
+c4c_zorgpad_data <- function(df, names = C4C_ZORGPAD_ALL_NAMES, years = NULL, breakdown_id = "yearly_total") {
   out <- dplyr::filter(
     df,
-    .data$breakdown == "yearly_total",
+    .data$breakdown == breakdown_id,
     .data$name %in% names,
     .data$type == "n_totaal_gebruikers"
   )
@@ -347,5 +375,11 @@ c4c_zorgpad_data <- function(df, names = C4C_ZORGPAD_ALL_NAMES, years = NULL) {
   out$heeft_medicatie <- factor(
     out$heeft_medicatie, levels = c("Zonder eerdere medicatie", "Met eerdere medicatie")
   )
+  out$breakdown_label <- c4c_breakdown_label(out$groep, breakdown_id)
+  out$facet_key <- if (identical(breakdown_id, "yearly_total")) {
+    as.character(out$heeft_event)
+  } else {
+    paste(out$heeft_event, out$breakdown_label, sep = " | ")
+  }
   out
 }

@@ -139,11 +139,20 @@ app_ui <- fluidPage(
             choices = stats::setNames(C4C_ZORGPAD_ALL_NAMES, c4c_outcome_label(C4C_ZORGPAD_ALL_NAMES)),
             selected = C4C_ZORGPAD_ALL_NAMES
           ),
+          selectInput(
+            "zorgpad_dimensie", "Uitsplitsing",
+            choices = c("Amsterdam totaal" = "yearly_total", breakdown_select_choices(C4C_BREAKDOWNS)),
+            selected = "yearly_total"
+          ),
           uiOutput("zorgpad_jaren_ui"),
           checkboxInput(
             "zorgpad_pct",
             "Toon als aandeel (%) binnen 'wel'/'geen gebeurtenis'",
             value = FALSE
+          ),
+          conditionalPanel(
+            condition = "input.zorgpad_dimensie != 'yearly_total'",
+            uiOutput("zorgpad_dimensie_groepen_ui")
           )
         ),
         column(
@@ -152,7 +161,19 @@ app_ui <- fluidPage(
           br(),
           chart_data_downloads_ui("zorgpad_downloads", chart_type = "stacked_bar"),
           h4("Onderliggende data"),
-          tableOutput("zorgpad_table")
+          tableOutput("zorgpad_table"),
+          hr(),
+          h4("Incidentie: eerste hartinfarct of beroerte (% van de risicogroep)"),
+          p(
+            "Van de Amsterdammers die dat jaar nog geen eerder hartinfarct of ",
+            "acute beroerte hadden gehad (de risicogroep), kreeg dit deel er voor ",
+            "het eerst één."
+          ),
+          plotOutput("zorgpad_incidentie_plot"),
+          br(),
+          chart_data_downloads_ui("zorgpad_incidentie_downloads", chart_type = "line"),
+          h4("Onderliggende data"),
+          tableOutput("zorgpad_incidentie_table")
         )
       )
     ),
@@ -289,6 +310,7 @@ server <- function(input, output, session) {
     dl_option_prefixes = c(
       "overzicht_downloads"           = "^overzicht_",
       "zorgpad_downloads"             = "^zorgpad_",
+      "zorgpad_incidentie_downloads"  = "^zorgpad_",
       "achtergrond_downloads_bar"     = "^achtergrond_",
       "achtergrond_downloads_trend"   = "^achtergrond_",
       "gebied_downloads"              = "^gebied_"
@@ -387,17 +409,25 @@ server <- function(input, output, session) {
   # ---------------------------------------------------------------------
 
   zorgpad_title <- reactive({
-    "Eerste hartinfarct of beroerte: met of zonder eerdere medicatie (Amsterdam)"
+    shiny::req(input$zorgpad_dimensie)
+    base <- "Eerste hartinfarct of beroerte: met of zonder eerdere medicatie"
+    if (identical(input$zorgpad_dimensie, "yearly_total")) {
+      paste0(base, " (Amsterdam)")
+    } else {
+      paste0(base, " naar ", C4C_BREAKDOWNS[[input$zorgpad_dimensie]]$label)
+    }
   })
 
-  # All 4 groups, all years -- feeds the year picker's choices.
+  # All 4 groups, all years, for the currently chosen breakdown -- feeds the
+  # year picker's choices and the "groepen binnen uitsplitsing" checkbox.
   zorgpad_all_data <- reactive({
-    c4c_zorgpad_data(OUTCOMES_DATA)
+    shiny::req(input$zorgpad_dimensie)
+    c4c_zorgpad_data(OUTCOMES_DATA, breakdown_id = input$zorgpad_dimensie)
   })
 
   output$zorgpad_jaren_ui <- renderUI({
     years <- sort(unique(zorgpad_all_data()$year))
-    shiny::validate(shiny::need(length(years) > 0, "Geen jaren beschikbaar."))
+    shiny::validate(shiny::need(length(years) > 0, "Geen jaren beschikbaar voor deze uitsplitsing."))
     sliderInput(
       "zorgpad_jaren", "Jaren",
       min = min(years), max = max(years), value = c(min(years), max(years)),
@@ -405,13 +435,30 @@ server <- function(input, output, session) {
     )
   })
 
+  output$zorgpad_dimensie_groepen_ui <- renderUI({
+    dim_id <- input$zorgpad_dimensie
+    groepen <- levels(droplevels(c4c_order_groep(unique(zorgpad_all_data()$groep), dim_id)))
+    if (length(groepen) == 0) groepen <- sort(unique(zorgpad_all_data()$groep))
+    labels <- c4c_relabel_groep(groepen, dim_id)
+    checkboxGroupInput(
+      "zorgpad_dimensie_groepen", "Groepen binnen uitsplitsing",
+      choices = stats::setNames(groepen, labels), selected = groepen
+    )
+  })
+
   zorgpad_data <- reactive({
-    shiny::req(input$zorgpad_groepen, input$zorgpad_jaren)
-    c4c_zorgpad_data(
+    shiny::req(input$zorgpad_groepen, input$zorgpad_jaren, input$zorgpad_dimensie)
+    df <- c4c_zorgpad_data(
       OUTCOMES_DATA,
       names = input$zorgpad_groepen,
-      years = seq(input$zorgpad_jaren[1], input$zorgpad_jaren[2])
+      years = seq(input$zorgpad_jaren[1], input$zorgpad_jaren[2]),
+      breakdown_id = input$zorgpad_dimensie
     )
+    if (!identical(input$zorgpad_dimensie, "yearly_total")) {
+      shiny::req(input$zorgpad_dimensie_groepen)
+      df <- dplyr::filter(df, .data$groep %in% input$zorgpad_dimensie_groepen)
+    }
+    df
   })
 
   output$zorgpad_plot <- renderPlot({
@@ -426,10 +473,17 @@ server <- function(input, output, session) {
     # Facetted by heeft_event (free y-axis): the two "event" groups (a few
     # honderd people) and the two "no event" groups (most of the
     # population) sit on wildly different scales -- one shared axis would
-    # make the event bars invisible.
+    # make the event bars invisible. A chosen breakdown adds a second facet
+    # dimension (columns) via facet_grid instead of facet_wrap, since
+    # scales="free_y" only frees the y-axis per row, not per cell.
     p <- ggplot(df, aes(x = factor(year), y = waarde, fill = heeft_medicatie)) +
-      geom_col(position = position) +
-      facet_wrap(~heeft_event, scales = "free_y") +
+      geom_col(position = position)
+    p <- if (identical(input$zorgpad_dimensie, "yearly_total")) {
+      p + facet_wrap(~heeft_event, scales = "free_y")
+    } else {
+      p + facet_grid(heeft_event ~ breakdown_label, scales = "free_y")
+    }
+    p <- p +
       scale_fill_manual(values = c(ahti_branding$colors$fris_rood, ahti_branding$colors$helder_blauw)) +
       labs(title = zorgpad_title(), x = "Jaar", y = y_lab, fill = NULL) +
       theme_minimal() +
@@ -446,9 +500,10 @@ server <- function(input, output, session) {
     df <- zorgpad_data()
     shiny::req(nrow(df) > 0)
     df %>%
-      dplyr::arrange(.data$year, .data$groep_label) %>%
+      dplyr::arrange(.data$year, .data$breakdown_label, .data$groep_label) %>%
       dplyr::transmute(
         Jaar = .data$year,
+        Uitsplitsing = as.character(.data$breakdown_label),
         Groep = as.character(.data$groep_label),
         Aantal = fmt_num(.data$waarde, digits = 0)
       )
@@ -461,14 +516,104 @@ server <- function(input, output, session) {
     category_col = "year",
     series_col = "heeft_medicatie",
     value_col = "waarde",
-    facet_col = "heeft_event",
+    facet_col = "facet_key",
     filename_prefix = "cardio4cities_zorgpad",
     agg_fun = NULL,
     figure_title = zorgpad_title,
     slide_title = zorgpad_title,
     source_output = OUTCOMES_SOURCE_FILE,
-    source_sheet = "yearly_total",
+    source_sheet = reactive(input$zorgpad_dimensie),
     source_mtime = OUTCOMES_SOURCE_MTIME
+  )
+
+  # -- Incidence-percentage chart: first major CVD event divided by its
+  # at-risk ("heeft_geen_eerdere_...") population -- see
+  # C4C_ZORGPAD_INCIDENCE_NAME. Distinct from the 4-group cross-tab above
+  # (which splits by medication history); shares the same breakdown, year
+  # range and group-deselect controls.
+
+  zorgpad_incidentie_title <- reactive({
+    shiny::req(input$zorgpad_dimensie)
+    base <- "Incidentie: eerste hartinfarct of acute beroerte (% van de risicogroep)"
+    if (identical(input$zorgpad_dimensie, "yearly_total")) {
+      paste0(base, " (Amsterdam)")
+    } else {
+      paste0(base, " naar ", C4C_BREAKDOWNS[[input$zorgpad_dimensie]]$label)
+    }
+  })
+
+  # All years for the currently chosen breakdown, before the year-range
+  # slider is applied.
+  zorgpad_incidentie_all_data <- reactive({
+    shiny::req(input$zorgpad_dimensie)
+    breakdown_id <- input$zorgpad_dimensie
+    df <- c4c_filter_outcome(OUTCOMES_DATA, breakdown_id, C4C_ZORGPAD_INCIDENCE_NAME, "n_totaal_gebruikers")
+    df <- c4c_apply_metric(df, "incidence", full_df = OUTCOMES_DATA, breakdown_id = breakdown_id)
+    df$breakdown_label <- c4c_breakdown_label(df$groep, breakdown_id)
+    df
+  })
+
+  zorgpad_incidentie_data <- reactive({
+    shiny::req(input$zorgpad_jaren, input$zorgpad_dimensie)
+    df <- dplyr::filter(
+      zorgpad_incidentie_all_data(),
+      .data$year >= input$zorgpad_jaren[1], .data$year <= input$zorgpad_jaren[2]
+    )
+    if (!identical(input$zorgpad_dimensie, "yearly_total")) {
+      shiny::req(input$zorgpad_dimensie_groepen)
+      df <- dplyr::filter(df, .data$groep %in% input$zorgpad_dimensie_groepen)
+    }
+    df
+  })
+
+  output$zorgpad_incidentie_plot <- renderPlot({
+    df <- zorgpad_incidentie_data()
+    shiny::validate(shiny::need(
+      nrow(df) > 0,
+      "Onvoldoende data beschikbaar voor deze selectie (geen groepen/jaren geselecteerd, of afgeschermd vanwege CBS-geheimhoudingsregels)."
+    ))
+    n_groups <- length(unique(df$breakdown_label))
+    ggplot(df, aes(x = year, y = waarde, color = breakdown_label, group = breakdown_label)) +
+      geom_line(linewidth = 1) +
+      geom_point(size = 2) +
+      scale_color_manual(values = c4c_palette(n_groups, ahti_branding$scale_discrete)) +
+      scale_x_continuous(breaks = YEAR_AXIS_BREAKS, labels = YEAR_AXIS_LABELS) +
+      scale_y_continuous(labels = VALUE_AXIS_LABELS) +
+      labs(
+        title = zorgpad_incidentie_title(), x = "Jaar",
+        y = c4c_metric_axis_label("incidence"), color = NULL
+      ) +
+      theme_minimal() +
+      theme(legend.position = "bottom")
+  })
+
+  output$zorgpad_incidentie_table <- renderTable({
+    df <- zorgpad_incidentie_data()
+    shiny::req(nrow(df) > 0)
+    df %>%
+      dplyr::arrange(.data$year, .data$breakdown_label) %>%
+      dplyr::transmute(
+        Jaar = .data$year,
+        Uitsplitsing = as.character(.data$breakdown_label),
+        `Incidentie (%)` = fmt_num(.data$waarde)
+      )
+  })
+
+  chart_data_downloads_server(
+    id = "zorgpad_incidentie_downloads",
+    data = zorgpad_incidentie_data,
+    chart_type = "line",
+    category_col = "year",
+    series_col = "breakdown_label",
+    value_col = "waarde",
+    filename_prefix = "cardio4cities_zorgpad_incidentie",
+    agg_fun = NULL,
+    figure_title = zorgpad_incidentie_title,
+    slide_title = zorgpad_incidentie_title,
+    source_output = OUTCOMES_SOURCE_FILE,
+    source_sheet = reactive(input$zorgpad_dimensie),
+    source_mtime = OUTCOMES_SOURCE_MTIME,
+    series_scope = reactive(input$zorgpad_dimensie)
   )
 
   # ---------------------------------------------------------------------
