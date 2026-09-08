@@ -12,7 +12,7 @@
 # functions, and `data/metadata/outcome_metadata.R` for what each raw
 # outcome column means.
 #
-# (Deploy trigger: no functional change.)
+# (Deploy trigger: no functional change. Re-check after SFTP permissions update.)
 
 source("data/metadata/brand_colors.R")
 source("data/metadata/outcome_metadata.R")
