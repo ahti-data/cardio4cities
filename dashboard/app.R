@@ -11,6 +11,8 @@
 # nearest 10) -- see `utils/cardio_data.R` for the loader and pure helper
 # functions, and `data/metadata/outcome_metadata.R` for what each raw
 # outcome column means.
+#
+# (Deploy trigger: no functional change.)
 
 source("data/metadata/brand_colors.R")
 source("data/metadata/outcome_metadata.R")
