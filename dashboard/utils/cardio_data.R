@@ -492,8 +492,8 @@ c4c_delta_start_year <- function(years) {
 #' @param metric One of [c4c_apply_metric()]'s `metric` values.
 #' @param full_df,breakdown_id Passed through to [c4c_apply_metric()] --
 #'   only used when `metric` is `"incidence"`.
-#' @return Tibble with `groep` and `waarde` (`year_end`'s metric value minus
-#'   `year_start`'s).
+#' @return Tibble with `groep` and `waarde` (`year_start`'s metric value
+#'   minus `year_end`'s -- a *decrease* over time is a positive number).
 c4c_year_delta <- function(df, year_start, year_end, metric, full_df = NULL, breakdown_id = NULL) {
   # .env$year (not a bare `year`) is required here: the parameter is named
   # the same as the `year` data column, and dplyr's data-masking resolves a
@@ -507,7 +507,11 @@ c4c_year_delta <- function(df, year_start, year_end, metric, full_df = NULL, bre
   start_df <- dplyr::select(metric_for_year(year_start), "groep", waarde_start = "waarde")
   end_df <- dplyr::select(metric_for_year(year_end), "groep", waarde_end = "waarde")
   out <- dplyr::inner_join(start_df, end_df, by = "groep")
-  dplyr::mutate(out, waarde = .data$waarde_end - .data$waarde_start)
+  # year_start minus year_end (e.g. 2013 - 2023), not the other way round:
+  # so a *decrease* over time (value went down) reads as a positive number
+  # and an increase reads as negative -- matches how this dashboard's "Naar
+  # gebied" delta map is meant to be read.
+  dplyr::mutate(out, waarde = .data$waarde_start - .data$waarde_end)
 }
 
 #' Relabel a category column through the shared Dictionary
