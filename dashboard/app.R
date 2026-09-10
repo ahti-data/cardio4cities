@@ -421,6 +421,10 @@ app_ui <- fluidPage(
             uiOutput("gebied_jaar_ui")
           ),
           conditionalPanel(
+            condition = "input.gebied_weergave == 'delta'",
+            uiOutput("gebied_delta_jaren_ui")
+          ),
+          conditionalPanel(
             condition = paste0("!(", GEBIED_MAP_LEVELS_JS, ") || input.gebied_weergave == 'bar'"),
             uiOutput("gebied_gebieden_ui"),
             checkboxInput("gebied_as_bij_nul", "Y-as bij 0 laten beginnen", value = TRUE)
@@ -514,11 +518,11 @@ app_ui <- fluidPage(
             ),
             p(
               style = "font-size:12px; color:#6B7280;",
-              "Toont per gebied het verschil tussen twee vaste referentiejaren (zie de titel: ",
-              "meestal 2013 en 2023, voor uitkomsten die pas vanaf 2016 gemeten worden 2016 en ",
-              "2023) -- niet het gekozen jaar hierboven. Gebieden zonder actuele grens in de ",
-              "gebruikte open geodatabron en 'Onbekend' staan niet op de kaart, maar wel in de ",
-              "tabel. Beweeg de muis over een gebied voor de naam en het verschil."
+              "Toont per gebied het verschil tussen de twee hierboven gekozen jaren (\"Van jaar\" ",
+              "min \"Naar jaar\" -- een afname over die periode is dus een positief getal). ",
+              "Gebieden zonder actuele grens in de gebruikte open geodatabron en 'Onbekend' staan ",
+              "niet op de kaart, maar wel in de tabel. Beweeg de muis over een gebied voor de ",
+              "naam en het verschil."
             ),
             downloadButton("gebied_delta_map_download", "Download kaart (PNG)"),
             br(), br(),
@@ -1148,7 +1152,8 @@ server <- function(input, output, session) {
   observeEvent(
     list(
       input$gebied_indicator, input$gebied_metric, input$gebied_niveau,
-      input$gebied_jaar, input$gebied_gebieden, input$gebied_weergave
+      input$gebied_jaar, input$gebied_gebieden, input$gebied_weergave,
+      input$gebied_delta_jaar_start, input$gebied_delta_jaar_eind
     ),
     {
       df <- if (identical(input$gebied_weergave, "delta")) gebied_delta_data() else gebied_selected_data()
@@ -1209,13 +1214,37 @@ server <- function(input, output, session) {
   # Naar gebied -- delta map (year_end minus year_start per area)
   # -----------------------------------------------------------------------
 
-  # 2013 vs 2023 for almost every outcome; 2016 vs 2023 for the handful only
-  # measured from 2016 onward (see c4c_delta_start_year()). Not
-  # user-selectable -- it's a fixed "then vs now" snapshot, not a general
-  # year-range picker, hence no accompanying UI input like gebied_jaar.
+  # Both years are freely user-selectable (gebied_delta_jaar_start/eind),
+  # from whichever years are actually available for the current
+  # indicator/niveau -- defaulting to 2013 (or 2016 for a handful of
+  # outcomes only measured from then on, see c4c_delta_start_year()) vs the
+  # latest available year, a sensible starting point the user can override.
+  output$gebied_delta_jaren_ui <- renderUI({
+    years <- sort(unique(gebied_available_data()$year))
+    shiny::validate(shiny::need(
+      length(years) >= 2,
+      "Onvoldoende jaren beschikbaar voor deze selectie om een verschil te tonen."
+    ))
+    tagList(
+      selectInput(
+        "gebied_delta_jaar_start", "Van jaar",
+        choices = years, selected = c4c_delta_start_year(years)
+      ),
+      selectInput("gebied_delta_jaar_eind", "Naar jaar", choices = years, selected = max(years))
+    )
+  })
+  # Keeps re-rendering even while its conditionalPanel is hidden (weergave
+  # != 'delta'), same reasoning as gebied_gebieden_ui above: otherwise a
+  # niveau/indicator change made while not looking at the delta map would
+  # leave these two selects (and so gebied_delta_years()) stuck on stale
+  # year choices until the user happens to revisit the delta view once
+  # first, at which point stale choices should have already been visible
+  # rather than reset silently.
+  outputOptions(output, "gebied_delta_jaren_ui", suspendWhenHidden = FALSE)
+
   gebied_delta_years <- reactive({
-    shiny::req(input$gebied_indicator, input$gebied_niveau)
-    list(start = c4c_delta_start_year(unique(gebied_available_data()$year)), end = 2023L)
+    shiny::req(input$gebied_delta_jaar_start, input$gebied_delta_jaar_eind)
+    list(start = as.integer(input$gebied_delta_jaar_start), end = as.integer(input$gebied_delta_jaar_eind))
   })
 
   # Uses the same (hidden-while-not-the-bar-chart) gebied_gebieden selection
@@ -1275,10 +1304,12 @@ server <- function(input, output, session) {
         "CBS-geheimhoudingsregels, of geen van beide referentiejaren beschikbaar)."
       )
     ))
-    years <- gebied_delta_years()
-    fill_label <- paste0(
-      "Verschil ", years$start, "–", years$end, " (", c4c_metric_axis_label(input$gebied_metric), ")"
-    )
+    # The fill legend itself deliberately doesn't repeat the two chosen
+    # years -- that'd need updating every time the user picks a different
+    # "Van jaar"/"Naar jaar" pair, unlike the plot's own title (gebied_delta_title(),
+    # only added on screen, not to this shared reactive -- see gebied_map_plot()'s
+    # comment on that split) which already states them.
+    fill_label <- paste0("Verschil in ", c4c_metric_axis_label(input$gebied_metric))
     gebied_choropleth(
       df, input$gebied_niveau, fill_label,
       input$gebied_kleur_min, input$gebied_kleur_max, input$gebied_kleur_laag, input$gebied_kleur_hoog

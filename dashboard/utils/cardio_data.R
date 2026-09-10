@@ -468,12 +468,12 @@ c4c_apply_metric <- function(df, metric, full_df = NULL, breakdown_id = NULL) {
   }
 }
 
-#' The "Naar gebied" delta map's start year for a given outcome: 2013,
-#' unless that year isn't in the data (a handful of outcomes -- the LBZ
-#' hospital-admission counts and the zorgpad "event" outcomes -- are only
-#' measured from 2016 onward), in which case 2016. The end year is always
-#' 2023 and isn't computed here: every outcome in this dataset has data
-#' through at least 2023, so it needs no such fallback.
+#' The "Naar gebied" delta map's *default* start year for a given outcome --
+#' both years are freely user-selectable, so this only picks the initial
+#' "Van jaar" suggestion: 2013, unless that year isn't in the data (a
+#' handful of outcomes -- the LBZ hospital-admission counts and the
+#' zorgpad "event" outcomes -- are only measured from 2016 onward), in
+#' which case 2016.
 #' @param years Numeric vector of years actually present for the outcome
 #'   (e.g. `unique(c4c_filter_outcome(...)$year)`).
 c4c_delta_start_year <- function(years) {
