@@ -64,7 +64,15 @@ Tabs:
   color), both rendered via the same `color_preset_buttons()`.
   Below the map, a table always shows both the percentage *and* the absolute
   count for every area, regardless of which metric is selected in the
-  dropdown above.
+  dropdown above. A third "Weergave" option, **Delta kaart**, shows the
+  change per area between two fixed reference years instead of one chosen
+  year -- 2013 to 2023 for almost every outcome, but 2016 to 2023 for the
+  handful only measured from 2016 onward (`c4c_delta_start_year()`); the
+  "Jaar" picker is hidden for it (those two years aren't user-selectable),
+  and it reuses the same kleurschaal controls, hover tooltip, and PNG/data
+  download pattern as the single-year map (`c4c_year_delta()` in
+  `utils/cardio_data.R` computes the per-area difference; both maps share
+  their actual plot-building code via `gebied_choropleth()` in `app.R`).
 - **Favorites / Export history / Manage templates / Dictionary** — shared
   template tabs, see below.
 

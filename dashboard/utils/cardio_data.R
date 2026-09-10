@@ -468,6 +468,48 @@ c4c_apply_metric <- function(df, metric, full_df = NULL, breakdown_id = NULL) {
   }
 }
 
+#' The "Naar gebied" delta map's start year for a given outcome: 2013,
+#' unless that year isn't in the data (a handful of outcomes -- the LBZ
+#' hospital-admission counts and the zorgpad "event" outcomes -- are only
+#' measured from 2016 onward), in which case 2016. The end year is always
+#' 2023 and isn't computed here: every outcome in this dataset has data
+#' through at least 2023, so it needs no such fallback.
+#' @param years Numeric vector of years actually present for the outcome
+#'   (e.g. `unique(c4c_filter_outcome(...)$year)`).
+c4c_delta_start_year <- function(years) {
+  if (2013L %in% years) 2013L else 2016L
+}
+
+#' Per-area change in a metric between two reference years, e.g. for a
+#' "Naar gebied" delta map. Computes the metric for `year_start` and
+#' `year_end` separately (via [c4c_apply_metric()]) and inner-joins the two
+#' by `groep`, so an area missing in either year (e.g. CBS-suppressed that
+#' year) drops out of the result entirely rather than showing a misleading
+#' partial delta.
+#' @param df A [c4c_filter_outcome()] slice covering both years (i.e. not
+#'   yet filtered to a single year).
+#' @param year_start,year_end The two reference years to compare.
+#' @param metric One of [c4c_apply_metric()]'s `metric` values.
+#' @param full_df,breakdown_id Passed through to [c4c_apply_metric()] --
+#'   only used when `metric` is `"incidence"`.
+#' @return Tibble with `groep` and `waarde` (`year_end`'s metric value minus
+#'   `year_start`'s).
+c4c_year_delta <- function(df, year_start, year_end, metric, full_df = NULL, breakdown_id = NULL) {
+  # .env$year (not a bare `year`) is required here: the parameter is named
+  # the same as the `year` data column, and dplyr's data-masking resolves a
+  # bare `year` against the data first -- `.data$year == year` silently
+  # becomes `.data$year == .data$year` (always TRUE) instead of comparing
+  # against the argument, and was caught only by a many-to-many join
+  # warning downstream, not by an error here.
+  metric_for_year <- function(year) {
+    c4c_apply_metric(dplyr::filter(df, .data$year == .env$year), metric, full_df = full_df, breakdown_id = breakdown_id)
+  }
+  start_df <- dplyr::select(metric_for_year(year_start), "groep", waarde_start = "waarde")
+  end_df <- dplyr::select(metric_for_year(year_end), "groep", waarde_end = "waarde")
+  out <- dplyr::inner_join(start_df, end_df, by = "groep")
+  dplyr::mutate(out, waarde = .data$waarde_end - .data$waarde_start)
+}
+
 #' Relabel a category column through the shared Dictionary
 #' (`utils/dictionary.R`), preserving factor level order when `x` is already
 #' an ordered factor -- same approach as `chart_data_downloads_server()`'s

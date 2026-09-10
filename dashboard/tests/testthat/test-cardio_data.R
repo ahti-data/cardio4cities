@@ -271,6 +271,38 @@ test_that("c4c_apply_metric dispatches to c4c_add_incidence only for the inciden
   expect_equal(pct_out$waarde, 90 / 915280 * 100)
 })
 
+test_that("c4c_delta_start_year picks 2013 when available, else 2016", {
+  expect_equal(c4c_delta_start_year(2006:2024), 2013L)
+  expect_equal(c4c_delta_start_year(2016:2024), 2016L)
+})
+
+test_that("c4c_year_delta computes year_end minus year_start per groep", {
+  df <- make_test_outcomes()
+  slice <- c4c_filter_outcome(df, "yearly_total", "heeft_risicofactor_medicatie", "n_totaal_gebruikers")
+  out <- c4c_year_delta(slice, 2022, 2023, "percentage")
+  expect_equal(out$groep, "")
+  expect_equal(out$waarde, 143760 / 915280 * 100 - 140000 / 900000 * 100)
+})
+
+test_that("c4c_year_delta drops a groep missing from either reference year (inner join)", {
+  df <- make_test_outcomes()
+  slice <- c4c_filter_outcome(df, "geslacht", "heeft_hypertensie", "n_totaal_gebruikers")
+  # This fixture only has "geslacht" x "heeft_hypertensie" rows for 2023 --
+  # neither groep has a 2022 row, so both should drop out of the delta.
+  out <- c4c_year_delta(slice, 2022, 2023, "percentage")
+  expect_equal(nrow(out), 0)
+})
+
+test_that("c4c_year_delta passes full_df/breakdown_id through for the incidence metric", {
+  df <- make_test_outcomes()
+  slice <- c4c_filter_outcome(df, "yearly_total", "heeft_eerste_jaar_hi_event", "n_totaal_gebruikers")
+  # This fixture only has a 2023 row for this outcome; use 2023 as both
+  # ends just to confirm the full_df/breakdown_id plumbing reaches
+  # c4c_add_incidence() without erroring (delta is 0 by construction).
+  out <- c4c_year_delta(slice, 2023, 2023, "incidence", full_df = df, breakdown_id = "yearly_total")
+  expect_equal(out$waarde, 0)
+})
+
 test_that("C4C_ZORGPAD_INCIDENCE_NAME's incidence works per breakdown, feeding the Zorgpad tab's rate chart", {
   df <- make_test_outcomes()
   numerator <- c4c_filter_outcome(df, "geslacht", C4C_ZORGPAD_INCIDENCE_NAME, "n_totaal_gebruikers")

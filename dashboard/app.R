@@ -189,6 +189,54 @@ y_axis_scale <- function(start_at_zero, labels = VALUE_AXIS_LABELS) {
   }
 }
 
+#' Shared choropleth-building logic for the "Naar gebied" tab's two map
+#' views -- the single-year map (`gebied_map_plot`) and the delta map
+#' (`gebied_delta_map_plot`) -- which differ only in which data feeds
+#' `waarde` and what the fill legend is titled; everything else (polygon
+#' grouping, aspect ratio, the user-adjustable color scale, the stadsdeel
+#' name labels) is identical.
+#' @param df Geo-joined data (`c4c_geo_join_stadsdeel()`/`_wijk()`/
+#'   `_wijk25()` output) with a `waarde` column.
+#' @param niveau One of `names(GEOGRAFISCHE_BREAKDOWNS)`.
+#' @param fill_label Fill legend title.
+#' @param kleur_min,kleur_max,kleur_laag,kleur_hoog The shared color-scale
+#'   inputs (`gebied_kleur_*`) -- `kleur_laag`/`kleur_hoog` fall back to the
+#'   map's original default (light red -> fris rood) when `NULL`, i.e.
+#'   before the user has ever touched those color pickers.
+gebied_choropleth <- function(df, niveau, fill_label, kleur_min, kleur_max, kleur_laag, kleur_hoog) {
+  group_var <- if (identical(niveau, "stadsdeel")) {
+    df$stadsdeel
+  } else if (identical(niveau, "wijk")) {
+    interaction(df$wijk, df$part)
+  } else {
+    interaction(df$wijk_25, df$part)
+  }
+  lat_ratio <- 1 / cos(mean(df$lat) * pi / 180)
+  kleur_laag <- if (!is.null(kleur_laag)) kleur_laag else "#FBEAE9"
+  kleur_hoog <- if (!is.null(kleur_hoog)) kleur_hoog else ahti_branding$colors$fris_rood
+  p <- ggplot(df, aes(x = long, y = lat, group = group_var, fill = waarde)) +
+    geom_polygon(color = "white", linewidth = 0.3) +
+    coord_fixed(ratio = lat_ratio) +
+    scale_fill_gradient(
+      low = kleur_laag, high = kleur_hoog,
+      name = fill_label,
+      labels = VALUE_AXIS_LABELS,
+      limits = c(kleur_min, kleur_max),
+      na.value = "grey80"
+    ) +
+    labs(x = NULL, y = NULL) +
+    theme_void() +
+    theme(legend.position = "right")
+  if (identical(niveau, "stadsdeel")) {
+    labels_df <- c4c_geo_label_points(df, "stadsdeel")
+    p <- p + geom_label(
+      data = labels_df, aes(x = long, y = lat, label = stadsdeel), inherit.aes = FALSE,
+      size = 3, fontface = "bold", color = "#1a1a1a", fill = "white", alpha = 0.75, label.size = 0
+    )
+  }
+  p
+}
+
 app_ui <- fluidPage(
   tc_tab_color_theme(ahti_branding),
   titlePanel(DASHBOARD_TITLE),
@@ -368,7 +416,10 @@ app_ui <- fluidPage(
             choices = breakdown_select_choices(GEOGRAFISCHE_BREAKDOWNS)
           ),
           uiOutput("gebied_metric_ui"),
-          uiOutput("gebied_jaar_ui"),
+          conditionalPanel(
+            condition = "input.gebied_weergave != 'delta'",
+            uiOutput("gebied_jaar_ui")
+          ),
           conditionalPanel(
             condition = paste0("!(", GEBIED_MAP_LEVELS_JS, ") || input.gebied_weergave == 'bar'"),
             uiOutput("gebied_gebieden_ui"),
@@ -378,10 +429,10 @@ app_ui <- fluidPage(
             condition = GEBIED_MAP_LEVELS_JS,
             radioButtons(
               "gebied_weergave", "Weergave",
-              choices = c("Staafdiagram" = "bar", "Kaart" = "map")
+              choices = c("Staafdiagram" = "bar", "Kaart" = "map", "Delta kaart" = "delta")
             ),
             conditionalPanel(
-              condition = "input.gebied_weergave == 'map'",
+              condition = "input.gebied_weergave == 'map' || input.gebied_weergave == 'delta'",
               numericInput("gebied_kleur_min", "Kleurschaal: minimum", value = NA),
               numericInput("gebied_kleur_max", "Kleurschaal: maximum", value = NA),
               color_picker_input("gebied_kleur_laag", "Kleurschaal: kleur bij minimum", value = "#FBEAE9"),
@@ -439,6 +490,41 @@ app_ui <- fluidPage(
             chart_data_downloads_ui("gebied_map_downloads", chart_type = "bar"),
             h4("Onderliggende data"),
             tableOutput("gebied_map_table")
+          ),
+          conditionalPanel(
+            condition = paste0("(", GEBIED_MAP_LEVELS_JS, ") && input.gebied_weergave == 'delta'"),
+            div(
+              style = "position: relative;",
+              plotOutput(
+                "gebied_delta_map", height = "620px",
+                hover = hoverOpts("gebied_delta_map_hover", delay = 60, delayType = "debounce", nullOutside = TRUE)
+              ),
+              uiOutput("gebied_delta_map_tooltip"),
+              conditionalPanel(
+                condition = "$('html').hasClass('shiny-busy')",
+                div(
+                  "Kaart wordt geladen...",
+                  style = paste0(
+                    "position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);",
+                    "background: white; border: 1px solid #D1D5DB; border-radius: 6px;",
+                    "padding: 8px 16px; font-size: 14px; color: #374151; z-index: 200;"
+                  )
+                )
+              )
+            ),
+            p(
+              style = "font-size:12px; color:#6B7280;",
+              "Toont per gebied het verschil tussen twee vaste referentiejaren (zie de titel: ",
+              "meestal 2013 en 2023, voor uitkomsten die pas vanaf 2016 gemeten worden 2016 en ",
+              "2023) -- niet het gekozen jaar hierboven. Gebieden zonder actuele grens in de ",
+              "gebruikte open geodatabron en 'Onbekend' staan niet op de kaart, maar wel in de ",
+              "tabel. Beweeg de muis over een gebied voor de naam en het verschil."
+            ),
+            downloadButton("gebied_delta_map_download", "Download kaart (PNG)"),
+            br(), br(),
+            chart_data_downloads_ui("gebied_delta_downloads", chart_type = "bar"),
+            h4("Onderliggende data"),
+            tableOutput("gebied_delta_map_table")
           )
         )
       )
@@ -465,7 +551,8 @@ server <- function(input, output, session) {
       "achtergrond_downloads_bar"     = "^achtergrond_",
       "achtergrond_downloads_trend"   = "^achtergrond_",
       "gebied_downloads"              = "^gebied_",
-      "gebied_map_downloads"          = "^gebied_"
+      "gebied_map_downloads"          = "^gebied_",
+      "gebied_delta_downloads"        = "^gebied_"
     )
   )
 
@@ -1031,67 +1118,16 @@ server <- function(input, output, session) {
       nrow(df) > 0,
       "Onvoldoende data beschikbaar voor deze selectie (mogelijk afgeschermd vanwege CBS-geheimhoudingsregels)."
     ))
-    # Stadsdeel polygons are single-piece (group = stadsdeel); wijk/wijk_25
-    # polygons can have several disjoint pieces per named area (group = name
-    # x part; see c4c_load_geo_wijk()/c4c_load_geo_wijk25()) -- either way
-    # ggplot draws one shape per group and fills it by the shared waarde for
-    # that name.
-    group_var <- if (identical(input$gebied_niveau, "stadsdeel")) {
-      df$stadsdeel
-    } else if (identical(input$gebied_niveau, "wijk")) {
-      interaction(df$wijk, df$part)
-    } else {
-      interaction(df$wijk_25, df$part)
-    }
-    # coord_equal() (ratio 1) would treat one degree of longitude as the
-    # same physical distance as one degree of latitude, but at Amsterdam's
-    # latitude a degree of longitude spans only ~cos(52.4 degrees) as much
-    # ground distance -- left uncorrected, the map is visibly stretched
-    # east-west compared to a properly projected map (e.g. the leaflet/sf
-    # map in maptool_klein). This is the standard fix for plotting raw
-    # lon/lat with ggplot2 without a real map projection (coord_map()/sf).
-    lat_ratio <- 1 / cos(mean(df$lat) * pi / 180)
     # Color-scale bounds are user-adjustable (gebied_kleur_min/max, reset to
     # the current selection's own data range by the observeEvent() below) --
     # NA on either side falls back to ggplot2's own data-range default for
-    # that side. The low/high colors themselves are user-adjustable too
+    # that side. The low/high colors are user-adjustable too
     # (gebied_kleur_laag/hoog, plain HTML5 color pickers -- see
-    # color_picker_input()); input[[...]] stays NULL until the user first
-    # touches that picker, so fall back to the same default shown as its
-    # initial swatch value.
-    kleur_laag <- if (!is.null(input$gebied_kleur_laag)) input$gebied_kleur_laag else "#FBEAE9"
-    kleur_hoog <- if (!is.null(input$gebied_kleur_hoog)) input$gebied_kleur_hoog else ahti_branding$colors$fris_rood
-    p <- ggplot(df, aes(x = long, y = lat, group = group_var, fill = waarde)) +
-      geom_polygon(color = "white", linewidth = 0.3) +
-      coord_fixed(ratio = lat_ratio) +
-      scale_fill_gradient(
-        low = kleur_laag, high = kleur_hoog,
-        name = c4c_metric_axis_label(input$gebied_metric),
-        labels = VALUE_AXIS_LABELS,
-        limits = c(input$gebied_kleur_min, input$gebied_kleur_max),
-        # An area with a boundary but no data that year (e.g. suppressed
-        # under CBS's output rules -- see c4c_geo_join_stadsdeel()/
-        # c4c_geo_join_wijk()) gets waarde = NA; grey it out explicitly
-        # instead of leaving it unfilled (which would blend into the
-        # white plot background and look like a rendering gap).
-        na.value = "grey80"
-      ) +
-      labs(x = NULL, y = NULL) +
-      theme_void() +
-      theme(legend.position = "right")
-    # Name labels only for stadsdeel -- with only 8 areas each label has
-    # room to breathe; wijk's 110 (and wijk_25's 25, several with long
-    # multi-part names like "De Aker, Sloten, Nieuw-Sloten") would need a
-    # repel layout to avoid overlapping labels, so both get a hover tooltip
-    # instead (see gebied_map_hover_info()/output$gebied_map_tooltip below).
-    if (identical(input$gebied_niveau, "stadsdeel")) {
-      labels_df <- c4c_geo_label_points(df, "stadsdeel")
-      p <- p + geom_label(
-        data = labels_df, aes(x = long, y = lat, label = stadsdeel), inherit.aes = FALSE,
-        size = 3, fontface = "bold", color = "#1a1a1a", fill = "white", alpha = 0.75, label.size = 0
-      )
-    }
-    p
+    # color_picker_input()) and shared with the delta map below.
+    gebied_choropleth(
+      df, input$gebied_niveau, c4c_metric_axis_label(input$gebied_metric),
+      input$gebied_kleur_min, input$gebied_kleur_max, input$gebied_kleur_laag, input$gebied_kleur_hoog
+    )
   })
 
   # On screen the map keeps its title; the PNG download (gebied_map_download,
@@ -1101,19 +1137,21 @@ server <- function(input, output, session) {
   })
 
   # Reset the color-scale bounds to the currently selected data's own min/max
-  # whenever indicator/metric/niveau/jaar/gebieden changes -- i.e. the fields
-  # always default to the exact selection shown on screen (gebied_selected_data(),
-  # the same reactive the map itself is built from). A manually-typed override
-  # is only kept until the next such change, since there is no way to tell "the
-  # user typed this on purpose" apart from "this is last selection's stale
-  # default" once the underlying selection itself changes.
+  # whenever indicator/metric/niveau/jaar/gebieden/weergave changes -- i.e.
+  # the fields always default to the exact selection shown on screen
+  # (gebied_selected_data() for the single-year map, gebied_delta_data() for
+  # the delta map -- both feed the same shared kleur controls). A
+  # manually-typed override is only kept until the next such change, since
+  # there is no way to tell "the user typed this on purpose" apart from
+  # "this is last selection's stale default" once the underlying selection
+  # itself changes.
   observeEvent(
     list(
       input$gebied_indicator, input$gebied_metric, input$gebied_niveau,
-      input$gebied_jaar, input$gebied_gebieden
+      input$gebied_jaar, input$gebied_gebieden, input$gebied_weergave
     ),
     {
-      df <- gebied_selected_data()
+      df <- if (identical(input$gebied_weergave, "delta")) gebied_delta_data() else gebied_selected_data()
       shiny::req(nrow(df) > 0)
       waarde <- df$waarde[is.finite(df$waarde)]
       shiny::req(length(waarde) > 0)
@@ -1165,6 +1203,182 @@ server <- function(input, output, session) {
     content = function(file) {
       ggsave(file, plot = gebied_map_plot(), width = 9, height = 7, dpi = 200, bg = "white")
     }
+  )
+
+  # -----------------------------------------------------------------------
+  # Naar gebied -- delta map (year_end minus year_start per area)
+  # -----------------------------------------------------------------------
+
+  # 2013 vs 2023 for almost every outcome; 2016 vs 2023 for the handful only
+  # measured from 2016 onward (see c4c_delta_start_year()). Not
+  # user-selectable -- it's a fixed "then vs now" snapshot, not a general
+  # year-range picker, hence no accompanying UI input like gebied_jaar.
+  gebied_delta_years <- reactive({
+    shiny::req(input$gebied_indicator, input$gebied_niveau)
+    list(start = c4c_delta_start_year(unique(gebied_available_data()$year)), end = 2023L)
+  })
+
+  # Uses the same (hidden-while-not-the-bar-chart) gebied_gebieden selection
+  # as gebied_selected_data() -- in practice always "every area", since that
+  # selector resets to select-all on every niveau change.
+  gebied_delta_data <- reactive({
+    shiny::req(input$gebied_metric, input$gebied_gebieden)
+    years <- gebied_delta_years()
+    df <- dplyr::filter(gebied_available_data(), .data$groep %in% input$gebied_gebieden)
+    c4c_year_delta(
+      df, years$start, years$end, input$gebied_metric,
+      full_df = OUTCOMES_DATA, breakdown_id = input$gebied_niveau
+    )
+  })
+
+  gebied_delta_plot_data <- reactive({
+    df <- gebied_delta_data()
+    df$groep_label <- c4c_relabel_groep(df$groep, input$gebied_niveau)
+    df$reeks <- c4c_outcome_label(input$gebied_indicator)
+    df
+  })
+
+  gebied_delta_title <- reactive({
+    shiny::req(input$gebied_indicator, input$gebied_niveau)
+    years <- gebied_delta_years()
+    dim_label <- C4C_BREAKDOWNS[[input$gebied_niveau]]$label
+    paste0(
+      c4c_outcome_label(input$gebied_indicator), " naar ", dim_label,
+      ": verandering ", years$start, "–", years$end
+    )
+  })
+
+  gebied_delta_map_data <- reactive({
+    shiny::validate(shiny::need(
+      input$gebied_niveau %in% GEBIED_MAP_LEVELS,
+      paste0(
+        "Kaart is alleen beschikbaar voor: ",
+        paste(vapply(GEBIED_MAP_LEVELS, function(id) C4C_BREAKDOWNS[[id]]$label, character(1)), collapse = ", "),
+        "."
+      )
+    ))
+    switch(input$gebied_niveau,
+      stadsdeel = c4c_geo_join_stadsdeel(GEO_STADSDEEL, gebied_delta_data()),
+      wijk = c4c_geo_join_wijk(GEO_WIJK, gebied_delta_data()),
+      wijk_25 = c4c_geo_join_wijk25(GEO_WIJK25, gebied_delta_data())
+    )
+  })
+
+  # Shared by output$gebied_delta_map (on-screen) and
+  # gebied_delta_map_download (PNG export), same split as gebied_map_plot().
+  gebied_delta_map_plot <- reactive({
+    df <- gebied_delta_map_data()
+    shiny::validate(shiny::need(
+      nrow(df) > 0,
+      paste0(
+        "Onvoldoende data beschikbaar voor deze selectie (mogelijk afgeschermd vanwege ",
+        "CBS-geheimhoudingsregels, of geen van beide referentiejaren beschikbaar)."
+      )
+    ))
+    years <- gebied_delta_years()
+    fill_label <- paste0(
+      "Verschil ", years$start, "–", years$end, " (", c4c_metric_axis_label(input$gebied_metric), ")"
+    )
+    gebied_choropleth(
+      df, input$gebied_niveau, fill_label,
+      input$gebied_kleur_min, input$gebied_kleur_max, input$gebied_kleur_laag, input$gebied_kleur_hoog
+    )
+  })
+
+  # On screen the map keeps its title; the PNG download deliberately omits
+  # it, using gebied_delta_map_plot() directly -- same split as the
+  # single-year map.
+  output$gebied_delta_map <- renderPlot({
+    gebied_delta_map_plot() + labs(title = gebied_delta_title())
+  })
+
+  # Hover tooltip -- same c4c_area_at_point() approach as the single-year
+  # map's gebied_map_hover_info(), kept as its own reactive/hover id rather
+  # than shared, since both plotOutputs are always present in the DOM (just
+  # conditionalPanel-hidden) and would otherwise fight over one hover input.
+  gebied_delta_map_hover_info <- reactive({
+    hover <- input$gebied_delta_map_hover
+    shiny::req(hover)
+    df <- gebied_delta_map_data()
+    switch(input$gebied_niveau,
+      stadsdeel = c4c_area_at_point(df, hover$x, hover$y, "stadsdeel"),
+      wijk = c4c_area_at_point(df, hover$x, hover$y, "wijk", part_col = "part"),
+      wijk_25 = c4c_area_at_point(df, hover$x, hover$y, "wijk_25", part_col = "part")
+    )
+  })
+
+  output$gebied_delta_map_tooltip <- renderUI({
+    hit <- gebied_delta_map_hover_info()
+    shiny::req(hit)
+    hover <- input$gebied_delta_map_hover
+    waarde_txt <- if (is.na(hit$waarde)) "geen data" else fmt_num(hit$waarde)
+    style <- paste0(
+      "position: absolute; z-index: 100; pointer-events: none;",
+      "left:", hover$coords_css$x + 12, "px; top:", hover$coords_css$y + 12, "px;",
+      "background: white; border: 1px solid #D1D5DB; border-radius: 4px;",
+      "padding: 4px 8px; font-size: 13px; box-shadow: 0 1px 4px rgba(0,0,0,0.2);"
+    )
+    div(style = style, strong(hit$name), br(), waarde_txt)
+  })
+
+  output$gebied_delta_map_download <- downloadHandler(
+    filename = function() {
+      years <- gebied_delta_years()
+      paste0("cardio4cities_naar_gebied_delta_", input$gebied_niveau, "_", years$start, "_", years$end, ".png")
+    },
+    content = function(file) {
+      ggsave(file, plot = gebied_delta_map_plot(), width = 9, height = 7, dpi = 200, bg = "white")
+    }
+  )
+
+  # Always shows both the percentage-point and the absolute-count delta,
+  # regardless of input$gebied_metric -- same convention as
+  # gebied_map_table_data() for the single-year map.
+  gebied_delta_map_table_data <- reactive({
+    shiny::req(input$gebied_gebieden, input$gebied_niveau)
+    years <- gebied_delta_years()
+    base <- dplyr::filter(gebied_available_data(), .data$groep %in% input$gebied_gebieden)
+    pct <- c4c_year_delta(base, years$start, years$end, "percentage")
+    aantal <- c4c_year_delta(base, years$start, years$end, "absolute")
+    dplyr::inner_join(
+      dplyr::transmute(
+        pct,
+        groep = .data$groep,
+        groep_label = c4c_relabel_groep(.data$groep, input$gebied_niveau),
+        percentage_delta = .data$waarde
+      ),
+      dplyr::transmute(aantal, groep = .data$groep, aantal_delta = .data$waarde),
+      by = "groep"
+    )
+  })
+
+  output$gebied_delta_map_table <- renderTable({
+    df <- gebied_delta_map_table_data()
+    shiny::req(nrow(df) > 0)
+    df %>%
+      dplyr::arrange(.data$groep_label) %>%
+      dplyr::transmute(
+        Gebied = as.character(.data$groep_label),
+        `Verschil aandeel (%-punt)` = fmt_num(.data$percentage_delta),
+        `Verschil aantal` = fmt_num(.data$aantal_delta, digits = 0)
+      )
+  })
+
+  chart_data_downloads_server(
+    id = "gebied_delta_downloads",
+    data = gebied_delta_plot_data,
+    chart_type = "bar",
+    category_col = "groep_label",
+    series_col = "reeks",
+    value_col = "waarde",
+    filename_prefix = "cardio4cities_naar_gebied_delta",
+    agg_fun = NULL,
+    figure_title = gebied_delta_title,
+    slide_title = gebied_delta_title,
+    source_output = OUTCOMES_SOURCE_FILE,
+    source_sheet = reactive(input$gebied_niveau),
+    source_mtime = OUTCOMES_SOURCE_MTIME,
+    category_scope = reactive(input$gebied_niveau)
   )
 
   # Always shows both percentage and absolute count, regardless of
