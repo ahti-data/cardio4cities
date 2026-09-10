@@ -42,9 +42,12 @@ Tabs:
   Shiny's default suspend-when-hidden (`outputOptions(...,
   suspendWhenHidden = FALSE)`) so switching niveau while the map is up
   doesn't leave it silently stuck on the previous niveau's area codes.
-  Stadsdeel's 8 areas get a permanent name label on the map;
-  wijk's 110 and wijk_25's 25 (several with long, multi-part names) don't
-  (too cluttered), hence the hover tooltip. The map's color scale
+  Stadsdeel's 8 areas get a permanent name label on the map by default --
+  a "Namen op de kaart tonen" checkbox (`gebied_namen_op_kaart`, stadsdeel
+  only) lets that be turned off too, e.g. for a cleaner screenshot; the
+  name is still reachable via the same hover tooltip either way, exactly
+  like wijk's 110 and wijk_25's 25 (several with long, multi-part names),
+  which never had permanent labels to begin with (too cluttered). The map's color scale
   (`scale_fill_gradient`) auto-fills its min/max *values* to the exact
   selection on screen (indicator, metric, niveau, jaar, and gebieden alike),
   rounded outward to 2 decimals (`floor_dp()`/`ceiling_dp()`) rather than to

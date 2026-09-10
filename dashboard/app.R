@@ -203,7 +203,12 @@ y_axis_scale <- function(start_at_zero, labels = VALUE_AXIS_LABELS) {
 #'   inputs (`gebied_kleur_*`) -- `kleur_laag`/`kleur_hoog` fall back to the
 #'   map's original default (light red -> fris rood) when `NULL`, i.e.
 #'   before the user has ever touched those color pickers.
-gebied_choropleth <- function(df, niveau, fill_label, kleur_min, kleur_max, kleur_laag, kleur_hoog) {
+#' @param show_names Whether to draw stadsdeel's permanent name labels
+#'   (`gebied_namen_op_kaart`, ignored for wijk/wijk_25, which never had
+#'   them -- their 110/25 areas rely on the hover tooltip alone). Hiding
+#'   them still leaves the name reachable via that same hover tooltip,
+#'   since it works for every niveau regardless of this flag.
+gebied_choropleth <- function(df, niveau, fill_label, kleur_min, kleur_max, kleur_laag, kleur_hoog, show_names = TRUE) {
   group_var <- if (identical(niveau, "stadsdeel")) {
     df$stadsdeel
   } else if (identical(niveau, "wijk")) {
@@ -227,7 +232,7 @@ gebied_choropleth <- function(df, niveau, fill_label, kleur_min, kleur_max, kleu
     labs(x = NULL, y = NULL) +
     theme_void() +
     theme(legend.position = "right")
-  if (identical(niveau, "stadsdeel")) {
+  if (identical(niveau, "stadsdeel") && isTRUE(show_names)) {
     labels_df <- c4c_geo_label_points(df, "stadsdeel")
     p <- p + geom_label(
       data = labels_df, aes(x = long, y = lat, label = stadsdeel), inherit.aes = FALSE,
@@ -437,6 +442,10 @@ app_ui <- fluidPage(
             ),
             conditionalPanel(
               condition = "input.gebied_weergave == 'map' || input.gebied_weergave == 'delta'",
+              conditionalPanel(
+                condition = "input.gebied_niveau == 'stadsdeel'",
+                checkboxInput("gebied_namen_op_kaart", "Namen op de kaart tonen", value = TRUE)
+              ),
               numericInput("gebied_kleur_min", "Kleurschaal: minimum", value = NA),
               numericInput("gebied_kleur_max", "Kleurschaal: maximum", value = NA),
               color_picker_input("gebied_kleur_laag", "Kleurschaal: kleur bij minimum", value = "#FBEAE9"),
@@ -1130,7 +1139,8 @@ server <- function(input, output, session) {
     # color_picker_input()) and shared with the delta map below.
     gebied_choropleth(
       df, input$gebied_niveau, c4c_metric_axis_label(input$gebied_metric),
-      input$gebied_kleur_min, input$gebied_kleur_max, input$gebied_kleur_laag, input$gebied_kleur_hoog
+      input$gebied_kleur_min, input$gebied_kleur_max, input$gebied_kleur_laag, input$gebied_kleur_hoog,
+      show_names = input$gebied_namen_op_kaart
     )
   })
 
@@ -1312,7 +1322,8 @@ server <- function(input, output, session) {
     fill_label <- paste0("Verschil in ", c4c_metric_axis_label(input$gebied_metric))
     gebied_choropleth(
       df, input$gebied_niveau, fill_label,
-      input$gebied_kleur_min, input$gebied_kleur_max, input$gebied_kleur_laag, input$gebied_kleur_hoog
+      input$gebied_kleur_min, input$gebied_kleur_max, input$gebied_kleur_laag, input$gebied_kleur_hoog,
+      show_names = input$gebied_namen_op_kaart
     )
   })
 
